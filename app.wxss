@@ -1,0 +1,41 @@
+page {
+  background: #0b0b0f;
+  color: #f5f5f0;
+  font-family: "HarmonyOS Sans SC", "Smiley Sans Oblique", sans-serif;
+}
+
+button {
+  border-radius: 999px;
+  font-size: 28rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  color: #fde68a;
+}
+
+.card {
+  position: relative;
+  background: linear-gradient(135deg, rgba(23, 23, 23, 0.95), rgba(11, 11, 15, 0.95));
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 28rpx;
+  box-shadow: 0 18rpx 36rpx rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 60%;
+  height: 6rpx;
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.7), rgba(245, 158, 11, 0));
+}
+
+.subtext {
+  color: #c0c0c0;
+  font-size: 24rpx;
+}

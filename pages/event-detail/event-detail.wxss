@@ -1,0 +1,108 @@
+.page {
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  background-image: radial-gradient(circle at 10% 10%, rgba(245, 158, 11, 0.14), rgba(0, 0, 0, 0) 55%);
+}
+
+.cover-card {
+  overflow: hidden;
+}
+
+.cover {
+  height: 320rpx;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(11, 11, 15, 0.05), rgba(11, 11, 15, 0.78));
+}
+
+.cover-badge {
+  position: absolute;
+  top: 18rpx;
+  left: 18rpx;
+  background: rgba(11, 11, 15, 0.85);
+  color: #fde68a;
+  font-size: 22rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  z-index: 1;
+}
+
+.cover-body {
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.event-title {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.event-meta {
+  font-size: 24rpx;
+  color: #fde68a;
+}
+
+.event-desc {
+  font-size: 24rpx;
+  color: #d7d7d7;
+}
+
+.primary-btn {
+  background: #f59e0b;
+  color: #0b0b0f;
+  padding: 10rpx 26rpx;
+  font-weight: 600;
+  align-self: flex-start;
+}
+
+.info-card {
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.album-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.highlight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-top: 6rpx;
+}
+
+.highlight-item {
+  display: flex;
+  gap: 8rpx;
+  align-items: flex-start;
+}
+
+.highlight-dot {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+.highlight-text {
+  font-size: 24rpx;
+  color: #f5f5f0;
+}
+
+.empty-photo {
+  padding: 24rpx 0;
+}

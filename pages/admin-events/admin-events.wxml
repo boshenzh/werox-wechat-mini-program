@@ -1,0 +1,54 @@
+<view class="page">
+  <view class="card form-card" wx:if="{{isAllowed}}">
+    <text class="section-title">赛事信息</text>
+    <text class="subtext">仅管理员可发布</text>
+    <view class="action-row">
+      <button class="ghost-btn" bindtap="seedEvents">导入赛事模板</button>
+      <button class="ghost-btn" bindtap="importUsersStub">导入报名用户</button>
+    </view>
+
+    <view class="form">
+      <view class="form-row">
+        <text class="form-label">赛事名称</text>
+        <input class="form-input" value="{{form.title}}" placeholder="Werox 深圳站" data-field="title" bindinput="handleInput" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">日期</text>
+        <input class="form-input" value="{{form.date}}" placeholder="2026-01-27" data-field="date" bindinput="handleInput" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">地点</text>
+        <input class="form-input" value="{{form.location}}" placeholder="深圳 · Werox 中心" data-field="location" bindinput="handleInput" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">主办方</text>
+        <input class="form-input" value="{{form.host}}" placeholder="Werox Lab" data-field="host" bindinput="handleInput" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">封面图 URL</text>
+        <input class="form-input" value="{{form.coverUrl}}" placeholder="https://..." data-field="coverUrl" bindinput="handleInput" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">简介</text>
+        <textarea class="form-textarea" value="{{form.description}}" placeholder="赛事亮点与规则说明" data-field="description" bindinput="handleInput" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">状态文案</text>
+        <input class="form-input" value="{{form.statusText}}" placeholder="即将开始" data-field="statusText" bindinput="handleInput" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">基础强度</text>
+        <input class="form-input" type="number" value="{{form.baseStrength}}" placeholder="例如 7" data-field="baseStrength" bindinput="handleInput" />
+      </view>
+      <view class="form-row">
+        <text class="form-label">基础耐力</text>
+        <input class="form-input" type="number" value="{{form.baseEndurance}}" placeholder="例如 7" data-field="baseEndurance" bindinput="handleInput" />
+      </view>
+      <button class="primary-btn" bindtap="saveEvent">发布赛事</button>
+    </view>
+  </view>
+  <view class="card form-card" wx:else>
+    <text class="section-title">无权限</text>
+    <text class="subtext">仅管理员可发布赛事</text>
+  </view>
+</view>

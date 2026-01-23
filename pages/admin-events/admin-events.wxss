@@ -1,0 +1,68 @@
+.page {
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
+  background-image: radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.12), rgba(0, 0, 0, 0) 55%);
+}
+
+.form-card {
+  padding: 26rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.ghost-btn {
+  background: transparent;
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  padding: 10rpx 24rpx;
+  align-self: flex-start;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 10rpx;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.form-label {
+  font-size: 24rpx;
+  color: #fde68a;
+}
+
+.form-input,
+.form-textarea {
+  background: rgba(17, 17, 17, 0.75);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 20rpx;
+  padding: 16rpx 20rpx;
+  color: #f5f5f0;
+  font-size: 26rpx;
+}
+
+.form-textarea {
+  min-height: 150rpx;
+}
+
+.primary-btn {
+  background: #f59e0b;
+  color: #0b0b0f;
+  padding: 10rpx 26rpx;
+  font-weight: 600;
+  align-self: flex-start;
+}

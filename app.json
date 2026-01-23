@@ -1,0 +1,38 @@
+{
+  "pages": [
+    "pages/events/events",
+    "pages/event-detail/event-detail",
+    "pages/profile-edit/profile-edit",
+    "pages/admin-events/admin-events",
+    "pages/profile/profile"
+  ],
+  "window": {
+    "navigationBarTitleText": "WeRox Lab",
+    "navigationBarBackgroundColor": "#111827",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#0b0f19",
+    "backgroundTextStyle": "light"
+  },
+  "tabBar": {
+    "color": "#c0c0c0",
+    "selectedColor": "#f59e0b",
+    "backgroundColor": "#0b0b0f",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/events/events",
+        "text": "赛事",
+        "iconPath": "assets/tabbar/events.png",
+        "selectedIconPath": "assets/tabbar/events-active.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的",
+        "iconPath": "assets/tabbar/profile.png",
+        "selectedIconPath": "assets/tabbar/profile-active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
