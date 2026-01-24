@@ -1,7 +1,22 @@
 <view class="page">
   <view class="card hero-card">
     <view class="hero-top">
-      <view class="avatar-wrap">
+      <!-- Avatar: clickable in edit mode to change -->
+      <button class="avatar-wrap avatar-btn-edit" wx:if="{{isEditing}}" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+        <image
+          class="avatar"
+          src="{{profile.avatarFileId}}"
+          mode="aspectFill"
+          wx:if="{{profile.avatarFileId}}"
+        />
+        <view class="avatar-placeholder" wx:else>
+          <text class="avatar-text">点击上传</text>
+        </view>
+        <view class="avatar-edit-hint">
+          <text>更换</text>
+        </view>
+      </button>
+      <view class="avatar-wrap" wx:else>
         <image
           class="avatar"
           src="{{profile.avatarFileId}}"
@@ -45,7 +60,8 @@
         <text class="subtext">角色</text>
         <text class="hero-value">{{roleLabel}}</text>
       </view>
-      <view class="hero-row hero-row-inline">
+      <!-- OpenID only visible to admins -->
+      <view class="hero-row hero-row-inline" wx:if="{{isAdmin}}">
         <view class="hero-inline-text">
           <text class="subtext">OpenID</text>
           <text class="hero-value" selectable="true">{{openid}}</text>
@@ -215,8 +231,9 @@
         </view>
       </view>
     </view>
-    <view class="empty-state" wx:else>
-      <text class="subtext">暂无成绩记录</text>
+    <view class="empty-state-inline" wx:else>
+      <view class="empty-icon">🏅</view>
+      <text class="subtext">暂无成绩记录，参加赛事后记录会显示在这里</text>
     </view>
   </view>
 
@@ -229,4 +246,33 @@
   <button class="float-edit" wx:if="{{isSelf}}" bindtap="handleEditAction">
     {{isEditing ? '保存修改' : '编辑主页'}}
   </button>
+
+  <view class="auth-mask" wx:if="{{showAuthPrompt}}">
+    <view class="auth-modal">
+      <text class="auth-title">完善头像与昵称</text>
+      <text class="subtext">选择头像和填写昵称，完善你的个人资料。</text>
+      <view class="auth-form">
+        <view class="auth-avatar-row">
+          <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" loading="{{authLoading}}">
+            <image class="avatar-preview" src="{{profile.avatarFileId}}" mode="aspectFill" wx:if="{{profile.avatarFileId}}" />
+            <text class="avatar-placeholder" wx:else>选择头像</text>
+          </button>
+        </view>
+        <view class="auth-nickname-row">
+          <input
+            class="nickname-input"
+            type="nickname"
+            placeholder="请输入昵称"
+            value="{{profile.nickname}}"
+            bindblur="onNicknameInput"
+          />
+        </view>
+      </view>
+      <view class="auth-actions">
+        <button class="ghost-btn auth-btn" bindtap="handleAuthDismiss">稍后</button>
+        <button class="primary-btn auth-btn" bindtap="handleAuthConfirm">完成</button>
+      </view>
+    </view>
+  </view>
+
 </view>

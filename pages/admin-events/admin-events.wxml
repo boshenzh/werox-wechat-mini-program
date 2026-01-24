@@ -2,49 +2,139 @@
   <view class="card form-card" wx:if="{{isAllowed}}">
     <text class="section-title">赛事信息</text>
     <text class="subtext">仅管理员可发布</text>
-    <view class="action-row">
-      <button class="ghost-btn" bindtap="seedEvents">导入赛事模板</button>
-      <button class="ghost-btn" bindtap="importUsersStub">导入报名用户</button>
+
+    <view class="edit-tip" wx:if="{{editingId}}">
+      <text class="subtext">正在编辑赛事，可点击"取消编辑"清空表单。</text>
     </view>
 
     <view class="form">
-      <view class="form-row">
-        <text class="form-label">赛事名称</text>
-        <input class="form-input" value="{{form.title}}" placeholder="Werox 深圳站" data-field="title" bindinput="handleInput" />
+      <!-- 基本信息 -->
+      <view class="form-section">
+        <text class="form-section-title">基本信息</text>
+
+        <view class="form-row">
+          <text class="form-label">赛事名称 *</text>
+          <input class="form-input" value="{{form.title}}" placeholder="Werox 深圳站" data-field="title" bindinput="handleInput" />
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">日期 *</text>
+          <picker mode="date" value="{{form.date}}" start="2024-01-01" end="2030-12-31" bindchange="handleDateChange">
+            <view class="picker-field {{form.date ? '' : 'picker-placeholder'}}">
+              {{form.date || '选择日期'}}
+            </view>
+          </picker>
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">地点</text>
+          <input class="form-input" value="{{form.location}}" placeholder="深圳 · Werox 中心" data-field="location" bindinput="handleInput" />
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">主办方</text>
+          <input class="form-input" value="{{form.host}}" placeholder="Werox Lab" data-field="host" bindinput="handleInput" />
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">状态</text>
+          <picker mode="selector" range="{{statusOptions}}" value="{{statusIndex}}" bindchange="handleStatusChange">
+            <view class="picker-field">
+              {{form.statusText || '即将开始'}}
+            </view>
+          </picker>
+        </view>
       </view>
-      <view class="form-row">
-        <text class="form-label">日期</text>
-        <input class="form-input" value="{{form.date}}" placeholder="2026-01-27" data-field="date" bindinput="handleInput" />
+
+      <!-- 媒体资源 -->
+      <view class="form-section">
+        <text class="form-section-title">媒体资源</text>
+
+        <view class="form-row">
+          <text class="form-label">封面图 URL</text>
+          <input class="form-input" value="{{form.coverUrl}}" placeholder="https://..." data-field="coverUrl" bindinput="handleInput" />
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">海报 URL</text>
+          <input class="form-input" value="{{form.posterUrl}}" placeholder="https://..." data-field="posterUrl" bindinput="handleInput" />
+        </view>
       </view>
-      <view class="form-row">
-        <text class="form-label">地点</text>
-        <input class="form-input" value="{{form.location}}" placeholder="深圳 · Werox 中心" data-field="location" bindinput="handleInput" />
+
+      <!-- 赛事详情 -->
+      <view class="form-section">
+        <text class="form-section-title">赛事详情</text>
+
+        <view class="form-row">
+          <text class="form-label">简介</text>
+          <textarea class="form-textarea" value="{{form.description}}" placeholder="赛事亮点与规则说明" data-field="description" bindinput="handleInput" />
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">基础强度 <text class="slider-value">{{form.baseStrength || 5}}</text></text>
+          <slider min="1" max="10" step="1" value="{{form.baseStrength || 5}}"
+            activeColor="#f59e0b" backgroundColor="rgba(245,158,11,0.2)"
+            block-size="20" block-color="#f59e0b"
+            data-field="baseStrength" bindchange="handleSliderChange" />
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">基础耐力 <text class="slider-value">{{form.baseEndurance || 5}}</text></text>
+          <slider min="1" max="10" step="1" value="{{form.baseEndurance || 5}}"
+            activeColor="#f59e0b" backgroundColor="rgba(245,158,11,0.2)"
+            block-size="20" block-color="#f59e0b"
+            data-field="baseEndurance" bindchange="handleSliderChange" />
+        </view>
       </view>
-      <view class="form-row">
-        <text class="form-label">主办方</text>
-        <input class="form-input" value="{{form.host}}" placeholder="Werox Lab" data-field="host" bindinput="handleInput" />
+
+      <!-- 报名设置 -->
+      <view class="form-section">
+        <text class="form-section-title">报名设置</text>
+
+        <view class="form-row">
+          <text class="form-label">人数上限</text>
+          <input class="form-input" type="number" value="{{form.maxParticipants}}" placeholder="留空表示不限人数" data-field="maxParticipants" bindinput="handleInput" />
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">报名费用（元）</text>
+          <input class="form-input" type="digit" value="{{form.price}}" placeholder="0 表示免费" data-field="price" bindinput="handleInput" />
+        </view>
       </view>
-      <view class="form-row">
-        <text class="form-label">封面图 URL</text>
-        <input class="form-input" value="{{form.coverUrl}}" placeholder="https://..." data-field="coverUrl" bindinput="handleInput" />
+
+      <!-- 高级选项（可选） -->
+      <view class="form-section">
+        <text class="form-section-title">高级选项</text>
+
+        <view class="form-row">
+          <text class="form-label">唯一标识（slug）</text>
+          <input class="form-input" value="{{form.slug}}" placeholder="留空将自动生成" data-field="slug" bindinput="handleInput" />
+          <text class="subtext">用于防止重复导入</text>
+        </view>
       </view>
-      <view class="form-row">
-        <text class="form-label">简介</text>
-        <textarea class="form-textarea" value="{{form.description}}" placeholder="赛事亮点与规则说明" data-field="description" bindinput="handleInput" />
+
+      <view class="action-row">
+        <button class="ghost-btn" wx:if="{{editingId}}" bindtap="resetForm">取消编辑</button>
+        <button class="primary-btn" bindtap="saveEvent">{{editingId ? '保存更新' : '发布赛事'}}</button>
       </view>
-      <view class="form-row">
-        <text class="form-label">状态文案</text>
-        <input class="form-input" value="{{form.statusText}}" placeholder="即将开始" data-field="statusText" bindinput="handleInput" />
+    </view>
+
+    <view class="list-card" wx:if="{{events.length > 0}}">
+      <text class="section-title">赛事列表</text>
+      <view class="event-list">
+        <view class="event-item" wx:for="{{events}}" wx:key="_id">
+          <view class="event-info">
+            <text class="event-title">{{item.title || '未命名赛事'}}</text>
+            <text class="subtext">{{item.date || item.dateText || '待定'}} · {{item.location || '待定'}}</text>
+            <text class="subtext">人数上限 {{item.maxParticipants || '不限'}} · 费用 {{item.price ? item.price + '元' : '免费'}}</text>
+          </view>
+          <view class="event-actions">
+            <button class="ghost-btn" data-id="{{item._id}}" bindtap="startEdit">编辑</button>
+            <button class="ghost-btn danger-btn" data-id="{{item._id}}" bindtap="deleteEvent">删除</button>
+            <button class="ghost-btn" data-id="{{item._id}}" bindtap="exportParticipants">导出名单</button>
+          </view>
+        </view>
       </view>
-      <view class="form-row">
-        <text class="form-label">基础强度</text>
-        <input class="form-input" type="number" value="{{form.baseStrength}}" placeholder="例如 7" data-field="baseStrength" bindinput="handleInput" />
-      </view>
-      <view class="form-row">
-        <text class="form-label">基础耐力</text>
-        <input class="form-input" type="number" value="{{form.baseEndurance}}" placeholder="例如 7" data-field="baseEndurance" bindinput="handleInput" />
-      </view>
-      <button class="primary-btn" bindtap="saveEvent">发布赛事</button>
     </view>
   </view>
   <view class="card form-card" wx:else>

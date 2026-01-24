@@ -1,0 +1,45 @@
+<view class="page">
+  <view class="card info-card" wx:if="{{event}}">
+    <text class="section-title">赛事报名</text>
+    <text class="event-title">{{event.title}}</text>
+    <text class="subtext">{{event.dateText}} · {{event.location}}</text>
+    <view class="meta-row">
+      <text class="meta-chip">费用 {{event.price ? event.price + '元/人' : '免费'}}</text>
+      <text class="meta-chip">人数上限 {{event.maxParticipants || '不限'}}</text>
+    </view>
+  </view>
+
+  <view class="card info-card" wx:if="{{profile}}">
+    <text class="section-title">你的资料</text>
+    <view class="profile-row">
+      <image class="profile-avatar" src="{{profile.avatarFileId}}" mode="aspectFill" wx:if="{{profile.avatarFileId}}" />
+      <view class="profile-avatar placeholder" wx:else>无</view>
+      <view class="profile-info">
+        <text class="profile-name">{{profile.nickname || '未命名选手'}}</text>
+        <text class="subtext">{{profile.trainingFocus || '训练方向未填写'}}</text>
+        <text class="subtext">微信号：{{profile.wechatId || '未填写'}}</text>
+      </view>
+    </view>
+    <text class="subtext">可在“我的”完善详细资料</text>
+  </view>
+
+  <view class="card form-card">
+    <text class="section-title">报名信息</text>
+    <view class="form-row">
+      <text class="form-label">报名组别</text>
+      <picker mode="selector" range="{{groupOptions}}" value="{{groupIndex}}" bindchange="handleGroupChange">
+        <view class="picker-field {{form.groupType ? '' : 'placeholder'}}">{{form.groupType || '请选择组别'}}</view>
+      </picker>
+    </view>
+    <view class="form-row">
+      <text class="form-label">搭档姓名（可选）</text>
+      <input class="form-input" value="{{form.partnerName}}" placeholder="例如：张三" data-field="partnerName" bindinput="handleInput" />
+    </view>
+    <view class="form-row">
+      <text class="form-label">备注（可选）</text>
+      <textarea class="form-textarea" value="{{form.note}}" placeholder="伤病、时间偏好等" data-field="note" bindinput="handleInput" />
+    </view>
+    <button class="primary-btn" loading="{{submitting}}" bindtap="handleSubmit" wx:if="{{!isSigned}}">确认报名</button>
+    <button class="ghost-btn" wx:else>已报名</button>
+  </view>
+</view>

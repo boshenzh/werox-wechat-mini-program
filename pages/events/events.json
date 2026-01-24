@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "赛事"
+  "navigationBarTitleText": "赛事",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "light"
 }

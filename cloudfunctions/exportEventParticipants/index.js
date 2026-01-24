@@ -1,0 +1,97 @@
+const cloud = require('wx-server-sdk');
+const XLSX = require('xlsx');
+
+cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+
+exports.main = async (event, context) => {
+  const { eventId } = event || {};
+  if (!eventId) {
+    throw new Error('eventId required');
+  }
+
+  const db = cloud.database();
+  const wxContext = cloud.getWXContext();
+
+  const userRes = await db.collection('users').where({ _openid: wxContext.OPENID }).limit(1).get();
+  const user = userRes.data && userRes.data.length ? userRes.data[0] : null;
+  if (!user || user.role !== 'admin') {
+    throw new Error('permission denied');
+  }
+
+  const eventRes = await db.collection('events').doc(eventId).get();
+  const eventDoc = eventRes.data;
+  if (!eventDoc) {
+    throw new Error('event not found');
+  }
+
+  const participantsRes = await db
+    .collection('event_participants')
+    .where({ eventId })
+    .get();
+  const participants = participantsRes.data || [];
+
+  const eventSheet = [
+    ['赛事ID', eventDoc._id],
+    ['名称', eventDoc.title || ''],
+    ['日期', eventDoc.date || eventDoc.dateText || ''],
+    ['地点', eventDoc.location || ''],
+    ['主办方', eventDoc.host || ''],
+    ['人数上限', eventDoc.maxParticipants || '不限'],
+    ['报名费用', eventDoc.price || 0],
+    ['状态', eventDoc.statusText || ''],
+    ['导出时间', new Date().toISOString()],
+  ];
+
+  const headers = [
+    '报名ID',
+    'OpenID',
+    '昵称',
+    '微信号',
+    '性别',
+    '训练方向',
+    'HYROX经验',
+    '搭档角色',
+    '搭档须知',
+    'MBTI',
+    '标签',
+    '报名组别',
+    '搭档姓名',
+    '报名备注',
+    '报名时间',
+  ];
+
+  const rows = participants.map((item) => {
+    const snapshot = item.profileSnapshot || {};
+    const form = item.eventForm || {};
+    return [
+      item._id || '',
+      item._openid || '',
+      snapshot.nickname || '',
+      snapshot.wechatId || '',
+      snapshot.sex || '',
+      snapshot.trainingFocus || '',
+      snapshot.hyroxExperience || '',
+      snapshot.partnerRole || '',
+      snapshot.partnerNote || '',
+      snapshot.mbti || '',
+      Array.isArray(snapshot.tags) ? snapshot.tags.join('，') : '',
+      form.groupType || '',
+      form.partnerName || '',
+      form.note || '',
+      item.createdAt ? new Date(item.createdAt).toISOString() : '',
+    ];
+  });
+
+  const wb = XLSX.utils.book_new();
+  const eventWs = XLSX.utils.aoa_to_sheet(eventSheet);
+  const participantWs = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+  XLSX.utils.book_append_sheet(wb, eventWs, 'event');
+  XLSX.utils.book_append_sheet(wb, participantWs, 'participants');
+
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const cloudPath = `exports/event_${eventId}_${Date.now()}.xlsx`;
+  const uploadRes = await cloud.uploadFile({ cloudPath, fileContent: buffer });
+
+  return { fileID: uploadRes.fileID, count: participants.length };
+};

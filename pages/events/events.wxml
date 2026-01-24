@@ -4,15 +4,24 @@
       <text class="hero-title">Werox</text>
       <text class="hero-sub">Hyrox 赛事与照片分享</text>
     </view>
-    <button class="ghost-btn" bindtap="goProfile">我的资料</button>
   </view>
 
-  <view class="status" wx:if="{{loading}}">
-    <text class="subtext">正在加载赛事...</text>
+  <!-- Skeleton Loading States -->
+  <view class="cards" wx:if="{{loading}}">
+    <view class="skeleton-card" wx:for="{{[1, 2]}}" wx:key="index">
+      <view class="skeleton-cover">
+        <view class="skeleton skeleton-badge"></view>
+      </view>
+      <view class="skeleton-body">
+        <view class="skeleton skeleton-title"></view>
+        <view class="skeleton skeleton-meta"></view>
+        <view class="skeleton skeleton-desc"></view>
+      </view>
+    </view>
   </view>
 
   <view class="cards" wx:else>
-    <view class="event-card card" wx:for="{{events}}" wx:key="id" data-event-id="{{item.id}}" bindtap="goDetail">
+    <view class="event-card card" wx:for="{{events}}" wx:key="id" data-event-id="{{item.id}}" bindtap="goDetail" hover-class="card-active">
       <view class="event-cover" style="background-image: url({{item.coverUrl}});">
         <view class="event-badge">{{item.statusText}}</view>
       </view>
@@ -20,48 +29,14 @@
         <text class="event-title">{{item.title}}</text>
         <text class="event-meta">{{item.dateText}} · {{item.location}}</text>
         <text class="event-desc">{{item.description}}</text>
-
-        <view class="album-header">
-          <text class="section-title">赛事相册</text>
-        </view>
-        <text class="subtext">{{photosByEvent[item.id].length}} 张照片已分享</text>
-
-        <scroll-view class="album-scroll" scroll-x="true" show-scrollbar="false">
-          <view class="album-track">
-            <view class="photo-card" wx:for="{{photosByEvent[item.id]}}" wx:for-item="photo" wx:key="_id">
-              <image
-                class="photo-thumb"
-                src="{{photo.fileID}}"
-                mode="aspectFill"
-                data-event-id="{{item.id}}"
-                data-url="{{photo.fileID}}"
-                bindtap="previewPhoto"
-              />
-            </view>
-            <view class="photo-empty" wx:if="{{photosByEvent[item.id].length === 0}}">
-              <text class="subtext">暂时还没有照片，欢迎你分享第一张。</text>
-            </view>
-          </view>
-        </scroll-view>
       </view>
     </view>
   </view>
-
-  <view class="modal-mask" wx:if="{{showWechatModal}}">
-    <view class="modal-card">
-      <text class="modal-title">赛事报名登记</text>
-      <text class="modal-sub">{{modalEvent.dateText}} · {{modalEvent.location}}</text>
-      <text class="modal-tip">已报名选手请输入微信号，用于匹配赛前资料。</text>
-      <input
-        class="modal-input"
-        value="{{wechatIdInput}}"
-        placeholder="请输入微信号"
-        bindinput="handleWechatInput"
-      />
-      <view class="modal-actions">
-        <button class="ghost-btn modal-btn" bindtap="handleWechatSkip">未注册</button>
-        <button class="primary-btn modal-btn" loading="{{modalLoading}}" bindtap="handleWechatConfirm">已注册</button>
-      </view>
+  <view class="empty-state-box" wx:if="{{!loading && events.length === 0}}">
+    <view class="empty-state-icon">
+      <text>🏃</text>
     </view>
+    <text class="empty-state-title">暂无赛事</text>
+    <text class="empty-state-desc">请稍后再来查看最新赛事安排</text>
   </view>
 </view>

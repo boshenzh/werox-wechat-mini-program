@@ -47,6 +47,8 @@ Page({
     loading: true,
     roleLabel: '用户',
     syncingWechatId: false,
+    authLoading: false,
+    showAuthPrompt: false,
     sexOptions: ['未选择', '男', '女', '其他'],
     trainingOptions: ['未选择', 'HYROX', 'CrossFit', '综合训练'],
     hyroxOptions: ['未选择', '无参赛经验', '有参赛经验'],
@@ -117,10 +119,18 @@ Page({
         roleLabel,
       });
       this.syncPickerIndexes(nextProfile);
+      this.maybePromptProfileAuth(nextProfile);
       if (doc.role !== role && (role === 'admin' || role === 'coach')) {
         await db.collection('users').doc(doc._id).update({ data: { role } });
       }
       return;
+    }
+
+    // Double-check to prevent race condition duplicates
+    const recheck = await db.collection('users').where({ _openid: openid }).get();
+    if (recheck.data && recheck.data.length > 0) {
+      // Another process created the user, use that record
+      return this.loadProfile(openid);
     }
 
     const newProfile = {
@@ -138,6 +148,7 @@ Page({
       partnerNote: '',
       mbti: '',
       role,
+      _openid: openid, // Explicitly set _openid for consistency
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -153,31 +164,46 @@ Page({
       roleLabel: this.getRoleLabel(role),
     });
     this.syncPickerIndexes(newProfile);
+    this.maybePromptProfileAuth(newProfile);
   },
 
   async loadAttendance(openid) {
-    const res = await db
-      .collection('event_attendance')
-      .where({ _openid: openid })
-      .orderBy('createdAt', 'desc')
-      .get();
+    // Use event_participants as the single source of truth (merged with event_attendance)
+    try {
+      const res = await db
+        .collection('event_participants')
+        .where({ _openid: openid })
+        .orderBy('createdAt', 'desc')
+        .get();
 
-    const records = (res.data || []).map((record) => {
-      const baseStrength = Number(record.baseStrength || 0);
-      const baseEndurance = Number(record.baseEndurance || 0);
-      const adjustStrength = Number(record.coachAdjustStrength || 0);
-      const adjustEndurance = Number(record.coachAdjustEndurance || 0);
-      const finalStrength = Number(record.finalStrength || baseStrength + adjustStrength);
-      const finalEndurance = Number(record.finalEndurance || baseEndurance + adjustEndurance);
-      return { ...record, finalStrength, finalEndurance };
-    });
-    const scores = this.calculateScores(records);
+      const records = (res.data || []).map((record) => {
+        // Map event_participants fields to display format
+        const eventName = record.eventTitle || record.eventName || '赛事记录';
+        const gymName = record.eventLocation || record.gymName || '未填写场馆';
+        const baseStrength = Number(record.baseStrength || 0);
+        const baseEndurance = Number(record.baseEndurance || 0);
+        const adjustStrength = Number(record.coachAdjustStrength || 0);
+        const adjustEndurance = Number(record.coachAdjustEndurance || 0);
+        const finalStrength = Number(record.finalStrength || baseStrength + adjustStrength);
+        const finalEndurance = Number(record.finalEndurance || baseEndurance + adjustEndurance);
+        return { ...record, eventName, gymName, finalStrength, finalEndurance };
+      });
+      const scores = this.calculateScores(records);
 
-    this.setData({
-      attendanceRecords: records,
-      strengthScore: scores.strength,
-      enduranceScore: scores.endurance,
-    });
+      this.setData({
+        attendanceRecords: records,
+        strengthScore: scores.strength,
+        enduranceScore: scores.endurance,
+      });
+    } catch (err) {
+      // Handle case where collection doesn't exist yet
+      console.log('No attendance records or collection not exists', err.message);
+      this.setData({
+        attendanceRecords: [],
+        strengthScore: 0,
+        enduranceScore: 0,
+      });
+    }
   },
 
   calculateScores(records) {
@@ -218,6 +244,114 @@ Page({
     }
     const key = `profile.${field}`;
     this.setData({ [key]: value });
+  },
+
+  maybePromptProfileAuth(profile) {
+    const needsAuth = !(profile.nickname && profile.avatarFileId);
+    this.setData({ showAuthPrompt: needsAuth });
+  },
+
+  handleAuthDismiss() {
+    this.setData({ showAuthPrompt: false });
+  },
+
+  // New avatar selection handler (replaces deprecated wx.getUserProfile)
+  async onChooseAvatar(e) {
+    console.log('onChooseAvatar triggered', e.detail);
+    const tempFilePath = e.detail.avatarUrl;
+    if (!tempFilePath) {
+      wx.showToast({ title: '未选择头像', icon: 'none' });
+      return;
+    }
+
+    this.setData({ authLoading: true });
+    wx.showLoading({ title: '上传中...' });
+
+    try {
+      // Upload to cloud storage
+      const cloudPath = `avatars/${this.data.openid}_${Date.now()}.jpg`;
+      console.log('Uploading avatar to:', cloudPath);
+      const uploadRes = await wx.cloud.uploadFile({
+        cloudPath,
+        filePath: tempFilePath,
+      });
+      const avatarFileId = uploadRes.fileID;
+      console.log('Avatar uploaded:', avatarFileId);
+
+      const profileId = this.data.profileId;
+      const updatedProfile = {
+        ...this.data.profile,
+        avatarFileId,
+      };
+
+      this.setData({
+        profile: updatedProfile,
+        showAuthPrompt: !(updatedProfile.nickname && updatedProfile.avatarFileId),
+      });
+
+      if (profileId) {
+        console.log('Saving avatar to profile:', profileId);
+        await db.collection('users').doc(profileId).update({
+          data: {
+            avatarFileId,
+            updatedAt: Date.now(),
+          },
+        });
+      }
+
+      wx.hideLoading();
+      wx.showToast({ title: '头像已更新', icon: 'success' });
+    } catch (err) {
+      wx.hideLoading();
+      console.error('Avatar upload failed', err);
+      const errMsg = err.errMsg || err.message || '头像上传失败';
+      if (errMsg.includes('permission') || errMsg.includes('PERMISSION_DENIED')) {
+        wx.showModal({
+          title: '权限不足',
+          content: '请检查云存储或数据库权限设置。',
+          showCancel: false,
+        });
+      } else {
+        wx.showToast({ title: '头像上传失败', icon: 'none' });
+      }
+    } finally {
+      this.setData({ authLoading: false });
+    }
+  },
+
+  // New nickname input handler (replaces deprecated wx.getUserProfile)
+  async onNicknameInput(e) {
+    const nickname = (e.detail.value || '').trim();
+    if (!nickname) return;
+
+    const profileId = this.data.profileId;
+    const updatedProfile = {
+      ...this.data.profile,
+      nickname,
+    };
+
+    this.setData({
+      profile: updatedProfile,
+      showAuthPrompt: !(updatedProfile.nickname && updatedProfile.avatarFileId),
+    });
+
+    if (profileId) {
+      try {
+        await db.collection('users').doc(profileId).update({
+          data: {
+            nickname,
+            updatedAt: Date.now(),
+          },
+        });
+      } catch (err) {
+        console.error('Nickname update failed', err);
+      }
+    }
+  },
+
+  handleAuthConfirm() {
+    // Close the auth prompt - user will use the avatar button and nickname input
+    this.setData({ showAuthPrompt: false });
   },
 
   handlePickerChange(e) {
@@ -313,13 +447,16 @@ Page({
   },
 
   cancelEdit() {
+    const restoredProfile = this.data.backupProfile || this.data.profile;
     this.setData({
       isEditing: false,
-      profile: this.data.backupProfile || this.data.profile,
+      profile: restoredProfile,
       tagText: this.data.backupTagText || '',
       backupProfile: null,
       backupTagText: '',
     });
+    // Sync picker indexes to restored profile values
+    this.syncPickerIndexes(restoredProfile);
   },
 
   copyOpenId() {
@@ -337,7 +474,13 @@ Page({
 
   async saveProfile() {
     const { profileId, profile, tagText, openid } = this.data;
-    if (!profileId) return;
+    if (!profileId) {
+      console.error('saveProfile: No profileId found');
+      wx.showToast({ title: '请先完成注册', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '保存中...' });
 
     const tags = tagText
       .split(/,|，/)
@@ -362,8 +505,12 @@ Page({
       updatedAt: Date.now(),
     };
 
+    console.log('saveProfile: Saving payload', profileId, payload);
+
     try {
       await db.collection('users').doc(profileId).update({ data: payload });
+      console.log('saveProfile: Success');
+      wx.hideLoading();
       this.setData({
         isEditing: false,
         profile: { ...profile, tags },
@@ -371,10 +518,21 @@ Page({
         backupProfile: null,
         backupTagText: '',
       });
+      this.maybePromptProfileAuth({ ...profile, tags });
       wx.showToast({ title: '已保存', icon: 'success' });
     } catch (err) {
+      wx.hideLoading();
       console.error('Failed to save profile', err);
-      wx.showToast({ title: '保存失败', icon: 'none' });
+      const errMsg = err.errMsg || err.message || '保存失败';
+      if (errMsg.includes('permission') || errMsg.includes('PERMISSION_DENIED')) {
+        wx.showModal({
+          title: '权限不足',
+          content: '请在 CloudBase 控制台设置 users 集合的安全规则，允许用户更新自己的记录。',
+          showCancel: false,
+        });
+      } else {
+        wx.showToast({ title: '保存失败', icon: 'none' });
+      }
     }
   },
 

@@ -49,6 +49,12 @@
 
 .event-card {
   overflow: hidden;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.card-active {
+  transform: scale(0.98);
+  opacity: 0.9;
 }
 
 .event-cover {
@@ -100,109 +106,4 @@
   color: #d7d7d7;
 }
 
-.album-header {
-  margin-top: 10rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.primary-btn {
-  background: #f59e0b;
-  color: #0b0b0f;
-  padding: 10rpx 26rpx;
-  font-weight: 600;
-}
-
-.album-scroll {
-  margin-top: 10rpx;
-}
-
-.album-track {
-  display: flex;
-  gap: 18rpx;
-  align-items: center;
-}
-
-.photo-card {
-  width: 200rpx;
-  height: 160rpx;
-  border-radius: 20rpx;
-  overflow: hidden;
-  border: 1px solid rgba(245, 158, 11, 0.22);
-}
-
-.photo-thumb {
-  width: 100%;
-  height: 100%;
-}
-
-.photo-empty {
-  padding: 24rpx 8rpx;
-  min-width: 320rpx;
-}
-
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 8, 12, 0.78);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32rpx;
-  z-index: 999;
-  backdrop-filter: blur(10rpx);
-  -webkit-backdrop-filter: blur(10rpx);
-}
-
-.modal-card {
-  width: 100%;
-  max-width: 620rpx;
-  padding: 32rpx;
-  border-radius: 28rpx;
-  background: linear-gradient(145deg, rgba(20, 20, 26, 0.92), rgba(10, 10, 14, 0.92));
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  box-shadow: 0 24rpx 48rpx rgba(0, 0, 0, 0.6);
-  display: flex;
-  flex-direction: column;
-  gap: 14rpx;
-}
-
-.modal-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #fde68a;
-}
-
-.modal-sub {
-  font-size: 22rpx;
-  color: #c0c0c0;
-}
-
-.modal-tip {
-  font-size: 24rpx;
-  color: #f5f5f0;
-}
-
-.modal-input {
-  margin-top: 8rpx;
-  background: rgba(15, 15, 18, 0.9);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: 18rpx;
-  padding: 16rpx 20rpx;
-  color: #f5f5f0;
-  font-size: 26rpx;
-}
-
-.modal-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18rpx;
-  margin-top: 8rpx;
-}
-
-.modal-btn {
-  flex: 1;
-  text-align: center;
-}
+/* Removed album-related styles - photos now only in event detail page */

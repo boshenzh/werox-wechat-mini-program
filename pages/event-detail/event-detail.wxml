@@ -1,5 +1,5 @@
 <view class="page">
-  <view class="card cover-card">
+  <view class="card cover-card" wx:if="{{event}}">
     <view class="cover" style="background-image: url({{event.coverUrl}});">
       <view class="cover-badge">{{event.statusText}}</view>
     </view>
@@ -7,11 +7,15 @@
       <text class="event-title">{{event.title}}</text>
       <text class="event-meta">{{event.dateText}} · {{event.location}}</text>
       <text class="event-desc">{{event.description}}</text>
-      <button class="primary-btn" bindtap="handleRegister">报名 / 购票</button>
+      <view class="event-meta-row">
+        <text class="meta-chip">人数上限 {{event.maxParticipants || '不限'}}</text>
+        <text class="meta-chip">费用 {{event.price ? event.price + '元/人' : '免费'}}</text>
+      </view>
+      <button class="primary-btn" bindtap="handleRegister">{{isFull ? '报名已满' : '立即报名'}}</button>
     </view>
   </view>
 
-  <view class="card info-card">
+  <view class="card info-card" wx:if="{{event && event.highlights.length}}">
     <text class="section-title">赛事亮点</text>
     <view class="highlight-list">
       <view class="highlight-item" wx:for="{{event.highlights}}" wx:key="index">
@@ -21,14 +25,63 @@
     </view>
   </view>
 
+  <view class="card info-card" wx:if="{{event && event.posterUrl}}">
+    <text class="section-title">赛事海报</text>
+    <image class="poster-img" src="{{event.posterUrl}}" mode="widthFix" />
+  </view>
+
   <view class="card info-card">
     <view class="album-header">
       <text class="section-title">赛事相册</text>
       <button class="primary-btn" bindtap="handleUpload">上传照片</button>
     </view>
     <text class="subtext">照片会同步到该赛事相册。</text>
-    <view class="empty-photo">
+    <view class="empty-state-inline">
+      <view class="empty-icon">📷</view>
       <text class="subtext">暂未上传照片</text>
     </view>
+  </view>
+
+  <view class="card info-card" wx:if="{{event}}">
+    <view class="album-header">
+      <text class="section-title">参赛选手</text>
+      <text class="subtext">{{participants.length}} 人</text>
+    </view>
+    <view class="participants-list" wx:if="{{participants.length > 0}}">
+      <view class="participant-item" wx:for="{{showAllParticipants ? participants : displayParticipants}}" wx:key="_id">
+        <image
+          class="participant-avatar"
+          src="{{item.avatarFileId}}"
+          mode="aspectFill"
+          wx:if="{{item.avatarFileId}}"
+        />
+        <view class="participant-avatar placeholder" wx:else>
+          <text class="avatar-icon">👤</text>
+        </view>
+        <view class="participant-info">
+          <text class="participant-name">{{item.nickname}}</text>
+          <text class="subtext">{{item.trainingFocus || '训练方向未填写'}}</text>
+          <text class="subtext">{{item.groupType || '报名组别未填写'}}</text>
+        </view>
+      </view>
+      <button class="view-more-btn" wx:if="{{!showAllParticipants && participants.length > 5}}" bindtap="toggleParticipants">
+        查看全部 ({{participants.length}}人)
+      </button>
+      <button class="view-more-btn" wx:if="{{showAllParticipants && participants.length > 5}}" bindtap="toggleParticipants">
+        收起列表
+      </button>
+    </view>
+    <view class="empty-state-inline" wx:else>
+      <view class="empty-icon">👥</view>
+      <text class="subtext">暂无报名选手</text>
+    </view>
+  </view>
+
+  <view class="empty-state-box" wx:if="{{!loading && !event}}">
+    <view class="empty-state-icon">
+      <text>🔍</text>
+    </view>
+    <text class="empty-state-title">赛事不存在</text>
+    <text class="empty-state-desc">该赛事可能已下架或不存在</text>
   </view>
 </view>

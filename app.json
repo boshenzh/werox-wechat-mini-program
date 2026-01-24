@@ -2,7 +2,7 @@
   "pages": [
     "pages/events/events",
     "pages/event-detail/event-detail",
-    "pages/profile-edit/profile-edit",
+    "pages/event-signup/event-signup",
     "pages/admin-events/admin-events",
     "pages/profile/profile"
   ],
