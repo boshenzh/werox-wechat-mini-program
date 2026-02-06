@@ -1,46 +1,123 @@
+/**
+ * DESIGN SPECIFICATION - WeRox Mini Program
+ * ==========================================
+ * 1. Purpose: HYROX 活动管理，社交，找hyrox 搭子队友,活动照片分享平台，面向运动爱好者
+ * 2. Aesthetic Direction: Industrial/Utilitarian + Luxury/Refined
+ *    - 工业风的功能性与高端运动品牌的精致感结合
+ * 3. Color Palette:
+ *    - Primary: #f59e0b (活力橙金)
+ *    - Primary Light: #fde68a (暖金色文字)
+ *    - Background: #0b0b0f (深邃黑)
+ *    - Card BG: rgba(17, 17, 17, 0.95) (卡片深灰)
+ *    - Text Primary: #f5f5f0 (温暖白)
+ *    - Text Secondary: #a3a3a3 (中灰)
+ *    - Accent Green: #34d399 (成功状态)
+ *    - Accent Blue: #60a5fa (信息状态)
+ * 4. Typography: HarmonyOS Sans SC + SF Pro Display feel
+ * 5. Layout Strategy: 卡片式布局 + 渐变光晕装饰 + 非对称高光条
+ */
+
+/* ========== Base Reset ========== */
 page {
   background: #0b0b0f;
   color: #f5f5f0;
-  font-family: "HarmonyOS Sans SC", "Smiley Sans Oblique", sans-serif;
+  font-family: "HarmonyOS Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-weight: 400;
+  line-height: 1.6;
 }
 
+/* ========== Typography ========== */
 button {
   border-radius: 999px;
   font-size: 28rpx;
+  font-weight: 500;
+  letter-spacing: 0.5rpx;
+}
+
+button::after {
+  border: none;
 }
 
 .section-title {
-  font-size: 30rpx;
-  font-weight: 600;
-  letter-spacing: 1rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  letter-spacing: 0.6rpx;
   color: #fde68a;
+  text-shadow: 0 0 26rpx rgba(245, 158, 11, 0.24);
 }
 
+.subtext {
+  color: #a3a3a3;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+/* ========== Card System ========== */
 .card {
   position: relative;
-  background: linear-gradient(135deg, rgba(23, 23, 23, 0.95), rgba(11, 11, 15, 0.95));
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: 28rpx;
-  box-shadow: 0 18rpx 36rpx rgba(0, 0, 0, 0.45);
+  background: linear-gradient(150deg, rgba(24, 24, 27, 0.98), rgba(10, 10, 14, 0.98));
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 32rpx;
+  box-shadow:
+    0 18rpx 36rpx rgba(0, 0, 0, 0.48),
+    0 0 64rpx rgba(245, 158, 11, 0.06) inset;
   overflow: hidden;
+  backdrop-filter: blur(20rpx);
+  -webkit-backdrop-filter: blur(20rpx);
 }
 
+/* Asymmetric top highlight bar */
 .card::before {
   content: "";
   position: absolute;
   top: 0;
-  left: -30%;
-  width: 60%;
-  height: 6rpx;
-  background: linear-gradient(90deg, rgba(245, 158, 11, 0.7), rgba(245, 158, 11, 0));
+  left: 8%;
+  width: 40%;
+  height: 3rpx;
+  background: linear-gradient(90deg,
+    rgba(245, 158, 11, 0) 0%,
+    rgba(245, 158, 11, 0.72) 30%,
+    rgba(253, 230, 138, 0.52) 70%,
+    rgba(245, 158, 11, 0) 100%
+  );
 }
 
-.subtext {
-  color: #d0d0d0;
-  font-size: 26rpx;
+/* ========== Button Styles ========== */
+.primary-btn {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #0b0b0f;
+  padding: 16rpx 36rpx;
+  font-weight: 700;
+  font-size: 28rpx;
+  border: none;
+  box-shadow:
+    0 10rpx 24rpx rgba(245, 158, 11, 0.32),
+    0 0 36rpx rgba(245, 158, 11, 0.14) inset;
+  transition: all 0.2s ease;
 }
 
-/* Skeleton Loading Animation */
+.primary-btn:active {
+  transform: scale(0.96);
+  box-shadow: 0 4rpx 12rpx rgba(245, 158, 11, 0.25);
+}
+
+.ghost-btn {
+  background: rgba(245, 158, 11, 0.09);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  padding: 14rpx 28rpx;
+  font-weight: 500;
+  backdrop-filter: blur(10rpx);
+  -webkit-backdrop-filter: blur(10rpx);
+  transition: all 0.2s ease;
+}
+
+.ghost-btn:active {
+  background: rgba(245, 158, 11, 0.15);
+  transform: scale(0.96);
+}
+
+/* ========== Skeleton Loading Animation ========== */
 @keyframes skeleton-shimmer {
   0% {
     background-position: -200% 0;
@@ -50,11 +127,31 @@ button {
   }
 }
 
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes float-up {
+  from {
+    opacity: 0;
+    transform: translateY(20rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .skeleton {
   background: linear-gradient(
     90deg,
     rgba(30, 30, 35, 0.8) 25%,
-    rgba(50, 50, 55, 0.8) 50%,
+    rgba(50, 50, 55, 0.9) 50%,
     rgba(30, 30, 35, 0.8) 75%
   );
   background-size: 200% 100%;
@@ -64,9 +161,9 @@ button {
 
 .skeleton-card {
   position: relative;
-  background: linear-gradient(135deg, rgba(23, 23, 23, 0.95), rgba(11, 11, 15, 0.95));
-  border: 1px solid rgba(245, 158, 11, 0.15);
-  border-radius: 28rpx;
+  background: linear-gradient(145deg, rgba(23, 23, 26, 0.95), rgba(11, 11, 15, 0.95));
+  border: 1px solid rgba(245, 158, 11, 0.1);
+  border-radius: 32rpx;
   overflow: hidden;
 }
 
@@ -75,7 +172,7 @@ button {
   background: linear-gradient(
     90deg,
     rgba(30, 30, 35, 0.8) 25%,
-    rgba(50, 50, 55, 0.8) 50%,
+    rgba(50, 50, 55, 0.9) 50%,
     rgba(30, 30, 35, 0.8) 75%
   );
   background-size: 200% 100%;
@@ -83,14 +180,14 @@ button {
 }
 
 .skeleton-body {
-  padding: 24rpx;
+  padding: 28rpx;
   display: flex;
   flex-direction: column;
-  gap: 14rpx;
+  gap: 16rpx;
 }
 
 .skeleton-title {
-  height: 40rpx;
+  height: 44rpx;
   width: 70%;
 }
 
@@ -106,65 +203,151 @@ button {
 
 .skeleton-badge {
   position: absolute;
-  top: 18rpx;
-  left: 18rpx;
+  top: 20rpx;
+  left: 20rpx;
   width: 100rpx;
   height: 40rpx;
   border-radius: 999px;
 }
 
-/* Unified Empty State Component */
+/* ========== Empty State Component ========== */
 .empty-state-box {
-  padding: 60rpx 24rpx;
+  padding: 80rpx 32rpx;
   text-align: center;
-  border: 1px dashed rgba(245, 158, 11, 0.3);
-  border-radius: 24rpx;
+  background: linear-gradient(145deg, rgba(23, 23, 26, 0.6), rgba(11, 11, 15, 0.6));
+  border: 1px dashed rgba(245, 158, 11, 0.25);
+  border-radius: 28rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16rpx;
+  gap: 20rpx;
 }
 
 .empty-state-icon {
-  width: 80rpx;
-  height: 80rpx;
+  width: 100rpx;
+  height: 100rpx;
   border-radius: 50%;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  background: linear-gradient(145deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05));
+  border: 1px solid rgba(245, 158, 11, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 8rpx;
+  margin-bottom: 12rpx;
+  box-shadow: 0 0 40rpx rgba(245, 158, 11, 0.1);
 }
 
-.empty-state-icon text {
-  font-size: 36rpx;
-  color: rgba(245, 158, 11, 0.6);
+.empty-state-icon image {
+  width: 48rpx;
+  height: 48rpx;
+  opacity: 0.8;
 }
 
 .empty-state-title {
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 600;
   color: #fde68a;
 }
 
 .empty-state-desc {
   font-size: 24rpx;
-  color: #d0d0d0;
+  color: #a3a3a3;
+  max-width: 400rpx;
 }
 
-/* Unified Avatar Placeholder */
+/* ========== Inline Empty State ========== */
+.empty-state-inline {
+  padding: 28rpx 0;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.empty-icon {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon image {
+  width: 32rpx;
+  height: 32rpx;
+  opacity: 0.7;
+}
+
+/* ========== Avatar Placeholder ========== */
 .avatar-placeholder-icon {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(30, 30, 35, 0.8);
-  color: rgba(245, 158, 11, 0.5);
-  font-size: 40rpx;
+  background: linear-gradient(145deg, rgba(35, 35, 40, 0.9), rgba(25, 25, 30, 0.9));
+  border: 1px solid rgba(245, 158, 11, 0.2);
 }
 
-.avatar-placeholder-icon.small {
-  font-size: 28rpx;
+.avatar-placeholder-icon image {
+  width: 50%;
+  height: 50%;
+  opacity: 0.5;
+}
+
+.avatar-placeholder-icon.small image {
+  width: 60%;
+  height: 60%;
+}
+
+/* ========== Status Colors ========== */
+.status-draft { color: #9ca3af; }
+.status-upcoming { color: #60a5fa; }
+.status-open { color: #34d399; }
+.status-closed { color: #fbbf24; }
+.status-ongoing { color: #f59e0b; }
+.status-ended { color: #a78bfa; }
+
+/* ========== Animation Utilities ========== */
+.animate-in {
+  animation: float-up 0.4s ease-out forwards;
+}
+
+.animate-in-delay-1 {
+  animation: float-up 0.4s ease-out 0.1s forwards;
+  opacity: 0;
+}
+
+.animate-in-delay-2 {
+  animation: float-up 0.4s ease-out 0.2s forwards;
+  opacity: 0;
+}
+
+/* ========== Divider ========== */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg,
+    rgba(245, 158, 11, 0) 0%,
+    rgba(245, 158, 11, 0.3) 50%,
+    rgba(245, 158, 11, 0) 100%
+  );
+  margin: 16rpx 0;
+}
+
+/* ========== Badge/Chip Styles ========== */
+.chip {
+  font-size: 22rpx;
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 999px;
+  padding: 8rpx 18rpx;
+  background: rgba(245, 158, 11, 0.1);
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.chip image {
+  width: 24rpx;
+  height: 24rpx;
 }

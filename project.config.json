@@ -2,9 +2,10 @@
   "setting": {
     "es6": true,
     "postcss": true,
-    "minified": true,
+    "minified": false,
     "uglifyFileName": false,
     "enhance": true,
+    "packNpmManually": false,
     "packNpmRelationList": [],
     "babelSetting": {
       "ignore": [],
@@ -12,7 +13,7 @@
       "outputPath": ""
     },
     "useCompilerPlugins": false,
-    "minifyWXML": true
+    "minifyWXML": false
   },
   "compileType": "miniprogram",
   "miniprogramRoot": "",

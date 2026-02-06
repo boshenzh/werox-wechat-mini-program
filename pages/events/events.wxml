@@ -1,8 +1,18 @@
 <view class="page">
+  <!-- Hero Section with Brand -->
   <view class="hero">
-    <view class="hero-text">
-      <text class="hero-title">Werox</text>
-      <text class="hero-sub">Hyrox 赛事与照片分享</text>
+    <view class="hero-content">
+      <view class="brand">
+        <image class="brand-logo-large" src="../../assets/werox_logo_thin.png" mode="aspectFit" />
+        <view class="hero-copy">
+          <text class="hero-kicker">HYROX 社区赛事</text>
+          <text class="hero-subline">找搭子 · 报名 · 开练</text>
+        </view>
+      </view>
+      <view class="hero-stats" wx:if="{{events.length > 0}}">
+        <text class="stat-number">{{events.length}}</text>
+        <text class="stat-label">场赛事</text>
+      </view>
     </view>
   </view>
 
@@ -20,21 +30,85 @@
     </view>
   </view>
 
+  <!-- Event Cards -->
   <view class="cards" wx:else>
-    <view class="event-card card" wx:for="{{events}}" wx:key="id" data-event-id="{{item.id}}" bindtap="goDetail" hover-class="card-active">
-      <view class="event-cover" style="background-image: url({{item.coverUrl}});">
-        <view class="event-badge">{{item.statusText}}</view>
+    <view
+      class="event-card card animate-in"
+      wx:for="{{events}}"
+      wx:key="id"
+      data-event-id="{{item.id}}"
+      bindtap="goDetail"
+      hover-class="card-active"
+      style="animation-delay: {{index * 0.08}}s"
+    >
+      <!-- Cover Image with Overlay -->
+      <view class="event-cover" style="background-image: url('{{item.coverUrl}}');">
+        <view class="cover-overlay"></view>
+        <view class="event-badge status-badge-{{item.status}}">{{item.statusText}}</view>
+        <view class="signup-chip">
+          <view class="signup-avatars" wx:if="{{item.participantAvatars && item.participantAvatars.length > 0}}">
+            <image
+              class="signup-avatar"
+              wx:for="{{item.participantAvatars}}"
+              wx:for-item="avatar"
+              wx:for-index="avatarIndex"
+              wx:key="avatarIndex"
+              src="{{avatar}}"
+              mode="aspectFill"
+            />
+          </view>
+          <text class="signup-text">{{item.signupText}}</text>
+        </view>
+        <!-- Format Mode Badge -->
+        <view class="format-badge" wx:if="{{item.formatMode && item.formatMode !== 'for_time'}}">
+          <text wx:if="{{item.formatMode === 'time_cap'}}">限时赛</text>
+          <text wx:if="{{item.formatMode === 'amrap'}}">AMRAP</text>
+          <text wx:if="{{item.formatMode === 'emom'}}">EMOM</text>
+          <text wx:if="{{item.formatMode === 'rounds'}}">多轮赛</text>
+        </view>
       </view>
+
+      <!-- Event Info -->
       <view class="event-body">
         <text class="event-title">{{item.title}}</text>
-        <text class="event-meta">{{item.dateText}} · {{item.location}}</text>
-        <text class="event-desc">{{item.description}}</text>
+        <view class="event-meta-row">
+          <view class="meta-item">
+            <image src="/assets/icons/calendar-small.png" class="meta-icon" mode="aspectFit" wx:if="{{false}}" />
+            <text class="event-meta">{{item.dateText}}</text>
+          </view>
+          <view class="meta-divider"></view>
+          <view class="meta-item">
+            <text class="event-meta">{{item.location}}</text>
+          </view>
+          <view class="meta-divider"></view>
+          <view class="meta-item">
+            <text class="event-meta distance-text">{{item.distanceText}}</text>
+          </view>
+        </view>
+
+        <!-- Intensity Indicators -->
+        <view class="intensity-row" wx:if="{{item.baseStrength > 0 || item.baseEndurance > 0}}">
+          <view class="intensity-item">
+            <text class="intensity-label">强度</text>
+            <view class="intensity-bar">
+              <view class="intensity-fill strength" style="width: {{item.baseStrength * 10}}%"></view>
+            </view>
+          </view>
+          <view class="intensity-item">
+            <text class="intensity-label">耐力</text>
+            <view class="intensity-bar">
+              <view class="intensity-fill endurance" style="width: {{item.baseEndurance * 10}}%"></view>
+            </view>
+          </view>
+        </view>
       </view>
     </view>
   </view>
+
+  <!-- Empty State -->
   <view class="empty-state-box" wx:if="{{!loading && events.length === 0}}">
     <view class="empty-state-icon">
-      <text>🏃</text>
+      <image src="/assets/icons/running.png" mode="aspectFit" />
     </view>
     <text class="empty-state-title">暂无赛事</text>
     <text class="empty-state-desc">请稍后再来查看最新赛事安排</text>

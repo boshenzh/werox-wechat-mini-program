@@ -1,226 +1,255 @@
 <view class="page">
   <view class="card hero-card">
-    <view class="hero-top">
-      <!-- Avatar: clickable in edit mode to change -->
-      <button class="avatar-wrap avatar-btn-edit" wx:if="{{isEditing}}" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-        <image
-          class="avatar"
-          src="{{profile.avatarFileId}}"
-          mode="aspectFill"
-          wx:if="{{profile.avatarFileId}}"
-        />
-        <view class="avatar-placeholder" wx:else>
-          <text class="avatar-text">点击上传</text>
+    <view class="hero-head">
+      <view class="hero-top">
+        <button class="avatar-wrap avatar-btn-edit" wx:if="{{isEditing}}" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image class="avatar" src="{{profile.avatar_file_id}}" mode="aspectFill" wx:if="{{profile.avatar_file_id}}" />
+          <view class="avatar-placeholder" wx:else>
+            <text class="avatar-text">点击上传</text>
+          </view>
+          <view class="avatar-edit-hint">
+            <text>更换</text>
+          </view>
+        </button>
+        <view class="avatar-wrap" wx:else>
+          <image class="avatar" src="{{profile.avatar_file_id}}" mode="aspectFill" wx:if="{{profile.avatar_file_id}}" />
+          <view class="avatar-placeholder" wx:else>
+            <text class="avatar-text">未上传</text>
+          </view>
         </view>
-        <view class="avatar-edit-hint">
-          <text>更换</text>
-        </view>
-      </button>
-      <view class="avatar-wrap" wx:else>
-        <image
-          class="avatar"
-          src="{{profile.avatarFileId}}"
-          mode="aspectFill"
-          wx:if="{{profile.avatarFileId}}"
-        />
-        <view class="avatar-placeholder" wx:else>
-          <text class="avatar-text">未上传</text>
+
+        <view class="hero-info">
+          <view wx:if="{{isEditing}}">
+            <input
+              class="hero-input"
+              type="nickname"
+              value="{{profile.nickname}}"
+              placeholder="填写昵称"
+              data-field="nickname"
+              bindinput="handleInput"
+              bindchange="onNicknameChange"
+            />
+            <text class="subtext">头像与昵称会作为你的主页主标识</text>
+          </view>
+          <text class="hero-name" wx:else>{{profile.nickname || '未命名选手'}}</text>
+
+          <view class="role-chip-row">
+            <text class="role-chip">{{roleLabel}}</text>
+            <text class="completion-chip">
+              资料完成 {{(profile.nickname ? 1 : 0) + (profile.avatar_file_id ? 1 : 0) + (profile.sex ? 1 : 0) + (profile.training_focus ? 1 : 0) + (profile.hyrox_level ? 1 : 0) + (profile.wechat_id ? 1 : 0) + (profile.bio ? 1 : 0)}} / 7
+            </text>
+          </view>
+
+          <view class="hero-meta" wx:if="{{!isEditing}}">
+            <text class="meta-item">出生年 {{profile.birth_year || '--'}}</text>
+            <text class="meta-item">MBTI {{profile.mbti || '--'}}</text>
+          </view>
         </view>
       </view>
-      <view class="hero-info">
-        <view class="hero-name-wrap" wx:if="{{isEditing}}">
-          <input class="hero-input" value="{{profile.nickname}}" placeholder="填写昵称" data-field="nickname" bindinput="handleInput" />
-        </view>
-        <text class="hero-name" wx:else>{{profile.nickname || '未命名选手'}}</text>
 
-        <view class="tag-list" wx:if="{{!isEditing}}">
-          <view class="tag" wx:for="{{profile.tags}}" wx:key="index">{{item}}</view>
-          <text class="subtext" wx:if="{{profile.tags.length === 0}}">添加标签展示风格</text>
-        </view>
-        <view class="tag-edit" wx:else>
-          <input class="form-input" value="{{tagText}}" placeholder="力量型、耐力型、战术型" data-field="tags" bindinput="handleInput" />
-          <text class="subtext">多个标签请用逗号分隔</text>
-        </view>
-
-        <view class="hero-meta" wx:if="{{!isEditing}}">
-          <text class="meta-item">年龄 {{profile.age || '--'}}</text>
-          <text class="meta-divider">/</text>
-          <text class="meta-item">心率 {{profile.heartRate || '--'}}</text>
-        </view>
-        <view class="hero-meta edit-meta" wx:else>
-          <input class="meta-input" type="number" value="{{profile.age}}" placeholder="年龄" data-field="age" bindinput="handleInput" />
-          <input class="meta-input" type="number" value="{{profile.heartRate}}" placeholder="心率" data-field="heartRate" bindinput="handleInput" />
-        </view>
+      <view class="tag-list" wx:if="{{!isEditing}}">
+        <view class="tag" wx:for="{{profile.tags}}" wx:key="index">{{item}}</view>
+        <text class="subtext" wx:if="{{!profile.tags || profile.tags.length === 0}}">添加标签展示你的训练风格</text>
       </view>
     </view>
 
-    <view class="hero-bottom">
-      <view class="hero-line"></view>
-      <view class="hero-row">
-        <text class="subtext">角色</text>
-        <text class="hero-value">{{roleLabel}}</text>
+    <view class="hero-divider"></view>
+
+    <view class="quick-grid" wx:if="{{!isEditing}}">
+      <view class="quick-item">
+        <text class="quick-label">微信号</text>
+        <text class="quick-value">{{profile.wechat_id || '未填写'}}</text>
       </view>
-      <!-- OpenID only visible to admins -->
-      <view class="hero-row hero-row-inline" wx:if="{{isAdmin}}">
-        <view class="hero-inline-text">
-          <text class="subtext">OpenID</text>
-          <text class="hero-value" selectable="true">{{openid}}</text>
-        </view>
-        <button class="ghost-btn copy-btn" bindtap="copyOpenId">复制</button>
+      <view class="quick-item">
+        <text class="quick-label">训练方向</text>
+        <text class="quick-value">{{profile.training_focus || '未选择'}}</text>
       </view>
-      <view class="hero-row">
-        <text class="subtext">微信号（选填）</text>
-        <text class="hero-value" wx:if="{{!isEditing}}">{{profile.wechatId || '未填写'}}</text>
-        <input
-          class="form-input"
-          wx:else
-          value="{{profile.wechatId}}"
-          placeholder="请输入微信号"
-          data-field="wechatId"
-          bindinput="handleInput"
-          bindblur="handleWechatIdBlur"
-        />
-        <text class="subtext" wx:if="{{isEditing}}">用于匹配赛前资料</text>
+      <view class="quick-item full">
+        <text class="quick-label">个人简介</text>
+        <text class="quick-value">{{profile.bio || '写下你的训练状态与目标'}}</text>
       </view>
-      <view class="hero-row">
-        <text class="subtext">个人简介</text>
-        <text class="hero-value" wx:if="{{!isEditing}}">{{profile.bio || '写下你的训练状态与目标'}}</text>
-        <textarea
-          class="form-textarea"
-          wx:else
-          value="{{profile.bio}}"
-          placeholder="写下你的训练状态与目标"
-          data-field="bio"
-          bindinput="handleInput"
-        />
-      </view>
-      <button class="ghost-btn" wx:if="{{isEditing}}" bindtap="cancelEdit">取消编辑</button>
+    </view>
+
+    <view class="edit-tip" wx:if="{{isEditing}}">
+      <text class="subtext">请按下方分组完成编辑，再保存资料。</text>
     </view>
   </view>
 
-  <view class="card stats-card">
-    <view class="stats-header">
-      <text class="section-title">训练评分</text>
-      <text class="subtext">来自参赛记录</text>
+  <view class="card edit-card" wx:if="{{isEditing}}">
+    <view class="edit-header">
+      <text class="section-title">编辑资料</text>
+      <text class="subtext">按分组填写，页面更清晰，保存更快</text>
     </view>
-    <view class="stats-grid">
-      <view class="stat-item">
-        <text class="stat-label">强度</text>
-        <text class="stat-value">{{strengthScore}}</text>
-      </view>
-      <view class="stat-divider"></view>
-      <view class="stat-item">
-        <text class="stat-label">耐力</text>
-        <text class="stat-value">{{enduranceScore}}</text>
-      </view>
-    </view>
-  </view>
 
-  <view class="card info-card">
-    <text class="section-title">个人资料</text>
-    <view class="form-list">
+    <view class="edit-section">
+      <view class="edit-section-head">
+        <text class="edit-index">01</text>
+        <text class="edit-title">基础信息</text>
+      </view>
+
       <view class="form-row">
         <text class="form-label">性别</text>
-        <picker
-          wx:if="{{isEditing}}"
-          mode="selector"
-          range="{{sexOptions}}"
-          value="{{sexIndex}}"
-          data-field="sex"
-          bindchange="handlePickerChange"
-        >
-          <view class="picker-field {{profile.sex ? '' : 'picker-placeholder'}}">
-            {{profile.sex || '未选择'}}
-          </view>
+        <picker mode="selector" range="{{sexOptions}}" value="{{sexIndex}}" data-field="sex" bindchange="handlePickerChange">
+          <view class="picker-field {{profile.sex ? '' : 'picker-placeholder'}}">{{profile.sex || '未选择'}}</view>
         </picker>
-        <text class="form-value" wx:else>{{profile.sex || '未选择'}}</text>
+      </view>
+
+      <view class="section-grid">
+        <view class="form-row">
+          <text class="form-label">出生年</text>
+          <input class="form-input" type="number" value="{{profile.birth_year}}" placeholder="例如 1996" data-field="birth_year" bindinput="handleInput" />
+        </view>
+
+        <view class="form-row">
+          <text class="form-label">MBTI</text>
+          <input class="form-input" value="{{profile.mbti}}" placeholder="例如 ENFJ" data-field="mbti" bindinput="handleInput" />
+        </view>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">运动标签（单选）</text>
+        <text class="subtext">请选择最能代表你的一个角色</text>
+        <view class="tag-selector">
+          <text
+            class="tag-chip {{selectedTag === item ? 'tag-chip-active' : ''}}"
+            wx:for="{{tagOptions}}"
+            wx:key="item"
+            data-tag="{{item}}"
+            bindtap="handleTagSelect"
+          >
+            {{item}}
+          </text>
+        </view>
+      </view>
+    </view>
+
+    <view class="edit-section">
+      <view class="edit-section-head">
+        <text class="edit-index">02</text>
+        <text class="edit-title">训练与参赛偏好</text>
       </view>
 
       <view class="form-row">
         <text class="form-label">主要训练方向</text>
-        <picker
-          wx:if="{{isEditing}}"
-          mode="selector"
-          range="{{trainingOptions}}"
-          value="{{trainingIndex}}"
-          data-field="trainingFocus"
-          bindchange="handlePickerChange"
-        >
-          <view class="picker-field {{profile.trainingFocus ? '' : 'picker-placeholder'}}">
-            {{profile.trainingFocus || '未选择'}}
-          </view>
+        <picker mode="selector" range="{{trainingOptions}}" value="{{trainingIndex}}" data-field="training_focus" bindchange="handlePickerChange">
+          <view class="picker-field {{profile.training_focus ? '' : 'picker-placeholder'}}">{{profile.training_focus || '未选择'}}</view>
         </picker>
-        <text class="form-value" wx:else>{{profile.trainingFocus || '未选择'}}</text>
       </view>
 
       <view class="form-row">
         <text class="form-label">HYROX 参赛经验</text>
-        <picker
-          wx:if="{{isEditing}}"
-          mode="selector"
-          range="{{hyroxOptions}}"
-          value="{{hyroxIndex}}"
-          data-field="hyroxExperience"
-          bindchange="handlePickerChange"
-        >
-          <view class="picker-field {{profile.hyroxExperience ? '' : 'picker-placeholder'}}">
-            {{profile.hyroxExperience || '未选择'}}
-          </view>
+        <picker mode="selector" range="{{hyroxOptions}}" value="{{hyroxIndex}}" data-field="hyrox_level" bindchange="handlePickerChange">
+          <view class="picker-field {{profile.hyrox_level ? '' : 'picker-placeholder'}}">{{profile.hyrox_level || '未选择'}}</view>
         </picker>
-        <text class="form-value" wx:else>{{profile.hyroxExperience || '未选择'}}</text>
       </view>
 
       <view class="form-row">
         <text class="form-label">双人搭档更适合的角色</text>
-        <picker
-          wx:if="{{isEditing}}"
-          mode="selector"
-          range="{{partnerRoleOptions}}"
-          value="{{partnerRoleIndex}}"
-          data-field="partnerRole"
-          bindchange="handlePickerChange"
-        >
-          <view class="picker-field {{profile.partnerRole ? '' : 'picker-placeholder'}}">
-            {{profile.partnerRole || '未选择'}}
-          </view>
+        <picker mode="selector" range="{{partnerRoleOptions}}" value="{{partnerRoleIndex}}" data-field="preferred_partner_role" bindchange="handlePickerChange">
+          <view class="picker-field {{profile.preferred_partner_role ? '' : 'picker-placeholder'}}">{{profile.preferred_partner_role || '未选择'}}</view>
         </picker>
-        <text class="form-value" wx:else>{{profile.partnerRole || '未选择'}}</text>
       </view>
 
       <view class="form-row">
         <text class="form-label">你希望搭档提前知道的一件事</text>
         <textarea
           class="form-textarea"
-          wx:if="{{isEditing}}"
-          value="{{profile.partnerNote}}"
-          placeholder="例如：节奏快时需要提醒我补水"
-          data-field="partnerNote"
+          value="{{profile.partner_note}}"
+          placeholder="例如：节奏快时提醒我补水"
+          data-field="partner_note"
           bindinput="handleInput"
         />
-        <text class="form-value" wx:else>{{profile.partnerNote || '暂未填写'}}</text>
+      </view>
+    </view>
+
+    <view class="edit-section">
+      <view class="edit-section-head">
+        <text class="edit-index">03</text>
+        <text class="edit-title">联系方式与简介</text>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">微信号（选填）</text>
+        <input
+          class="form-input"
+          value="{{profile.wechat_id}}"
+          placeholder="请输入微信号"
+          data-field="wechat_id"
+          bindinput="handleInput"
+          bindblur="handleWechatIdBlur"
+        />
+        <text class="subtext">用于匹配赛前资料</text>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">个人简介</text>
+        <textarea
+          class="form-textarea"
+          value="{{profile.bio}}"
+          placeholder="写下你的训练状态与目标"
+          data-field="bio"
+          bindinput="handleInput"
+        />
+      </view>
+    </view>
+
+    <view class="edit-actions">
+      <button class="primary-btn edit-action-btn" bindtap="saveProfile">保存资料</button>
+      <button class="ghost-btn edit-action-btn" bindtap="cancelEdit">取消编辑</button>
+    </view>
+  </view>
+
+  <view class="card info-card" wx:if="{{!isEditing}}">
+    <text class="section-title">个人资料</text>
+    <view class="form-list">
+      <view class="form-row">
+        <text class="form-label">性别</text>
+        <text class="form-value">{{profile.sex || '未选择'}}</text>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">主要训练方向</text>
+        <text class="form-value">{{profile.training_focus || '未选择'}}</text>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">HYROX 参赛经验</text>
+        <text class="form-value">{{profile.hyrox_level || '未选择'}}</text>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">双人搭档更适合的角色</text>
+        <text class="form-value">{{profile.preferred_partner_role || '未选择'}}</text>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">你希望搭档提前知道的一件事</text>
+        <text class="form-value">{{profile.partner_note || '暂未填写'}}</text>
       </view>
 
       <view class="form-row">
         <text class="form-label">MBTI</text>
-        <input
-          class="form-input"
-          wx:if="{{isEditing}}"
-          value="{{profile.mbti}}"
-          placeholder="例如 ENFJ"
-          data-field="mbti"
-          bindinput="handleInput"
-        />
-        <text class="form-value" wx:else>{{profile.mbti || '暂未填写'}}</text>
+        <text class="form-value">{{profile.mbti || '暂未填写'}}</text>
       </view>
     </view>
   </view>
 
-  <view class="card attendance-card">
+  <view class="card attendance-card" wx:if="{{!isEditing}}">
     <view class="attendance-header">
       <text class="section-title">参赛记录</text>
     </view>
     <view class="attendance-list" wx:if="{{attendanceRecords.length > 0}}">
-      <view class="attendance-item" wx:for="{{attendanceRecords}}" wx:key="_id">
+      <view
+        class="attendance-item"
+        wx:for="{{attendanceRecords}}"
+        wx:key="id"
+        bindtap="handleAttendanceTap"
+        data-event-id="{{item.eventId}}"
+        data-event-name="{{item.eventName}}"
+        data-event-date="{{item.eventDate}}"
+        data-event-location="{{item.eventLocation}}"
+        hover-class="attendance-item-hover"
+      >
         <view class="attendance-info">
           <text class="attendance-title">{{item.eventName || '赛事记录'}}</text>
           <text class="subtext">{{item.gymName || '未填写场馆'}}</text>
@@ -232,29 +261,30 @@
       </view>
     </view>
     <view class="empty-state-inline" wx:else>
-      <view class="empty-icon">🏅</view>
-      <text class="subtext">暂无成绩记录，参加赛事后记录会显示在这里</text>
+      <view class="empty-icon">
+        <image src="/assets/icons/medal.png" mode="aspectFit" />
+      </view>
+      <text class="subtext">暂无成绩记录，参加赛事后会显示在这里</text>
     </view>
   </view>
 
-  <view class="card admin-card" wx:if="{{isAdmin}}">
-    <text class="section-title">赛事管理</text>
-    <text class="subtext">仅管理员可发布赛事</text>
-    <button class="primary-btn" bindtap="goAdminEvents">新增赛事</button>
+  <view class="float-actions {{canManageEvents ? '' : 'float-actions-single'}}" wx:if="{{isSelf && !isEditing}}">
+    <button class="float-action float-action-edit" bindtap="handleEditAction">
+      编辑主页
+    </button>
+    <button class="float-action float-action-admin" wx:if="{{canManageEvents}}" bindtap="goAdminEvents">
+      新增赛事
+    </button>
   </view>
-
-  <button class="float-edit" wx:if="{{isSelf}}" bindtap="handleEditAction">
-    {{isEditing ? '保存修改' : '编辑主页'}}
-  </button>
 
   <view class="auth-mask" wx:if="{{showAuthPrompt}}">
     <view class="auth-modal">
-      <text class="auth-title">完善头像与昵称</text>
-      <text class="subtext">选择头像和填写昵称，完善你的个人资料。</text>
+      <text class="auth-title">先完善基础资料</text>
+      <text class="subtext">上传头像并填写昵称，其他信息可稍后补充。</text>
       <view class="auth-form">
         <view class="auth-avatar-row">
           <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" loading="{{authLoading}}">
-            <image class="avatar-preview" src="{{profile.avatarFileId}}" mode="aspectFill" wx:if="{{profile.avatarFileId}}" />
+            <image class="avatar-preview" src="{{profile.avatar_file_id}}" mode="aspectFill" wx:if="{{profile.avatar_file_id}}" />
             <text class="avatar-placeholder" wx:else>选择头像</text>
           </button>
         </view>
@@ -264,6 +294,7 @@
             type="nickname"
             placeholder="请输入昵称"
             value="{{profile.nickname}}"
+            bindchange="onNicknameChange"
             bindblur="onNicknameInput"
           />
         </view>
@@ -274,5 +305,4 @@
       </view>
     </view>
   </view>
-
 </view>

@@ -1,62 +1,61 @@
-const db = wx.cloud.database();
-const { getRoleByOpenid } = require('../../utils/roles');
+const { getCurrentOpenid, DEFAULT_PROFILE } = require('../../utils/user');
+const { getMe, getUserByOpenid, updateMyProfile, listEvents } = require('../../utils/api');
 
 const OPTION_MAP = {
   sex: 'sexOptions',
-  trainingFocus: 'trainingOptions',
-  hyroxExperience: 'hyroxOptions',
-  partnerRole: 'partnerRoleOptions',
+  training_focus: 'trainingOptions',
+  hyrox_level: 'hyroxOptions',
+  preferred_partner_role: 'partnerRoleOptions',
 };
 
 const INDEX_MAP = {
   sex: 'sexIndex',
-  trainingFocus: 'trainingIndex',
-  hyroxExperience: 'hyroxIndex',
-  partnerRole: 'partnerRoleIndex',
+  training_focus: 'trainingIndex',
+  hyrox_level: 'hyroxIndex',
+  preferred_partner_role: 'partnerRoleIndex',
 };
+
+const PREDEFINED_TAGS = [
+  '#PACER（心肺担当）',
+  'Ranger（六边形）',
+  'Support（战术辅助）',
+  'TANK（力量担当）',
+];
 
 Page({
   data: {
     openid: '',
-    profileId: '',
-    profile: {
-      nickname: '',
-      age: '',
-      heartRate: '',
-      bio: '',
-      avatarFileId: '',
-      wechatId: '',
-      tags: [],
-      sex: '',
-      trainingFocus: '',
-      hyroxExperience: '',
-      partnerRole: '',
-      partnerNote: '',
-      mbti: '',
-      role: 'user',
-    },
+    viewOpenid: '',
+    odId: null, // SQL record ID
+    profile: { ...DEFAULT_PROFILE },
     tagText: '',
+    selectedTag: '',
+    tagOptions: PREDEFINED_TAGS,
     isEditing: false,
     backupProfile: null,
     backupTagText: '',
-    isAdmin: false,
+    backupSelectedTag: '',
+    canManageEvents: false,
     isSelf: true,
-    strengthScore: 0,
-    enduranceScore: 0,
     attendanceRecords: [],
     loading: true,
     roleLabel: '用户',
     syncingWechatId: false,
     authLoading: false,
     showAuthPrompt: false,
-    sexOptions: ['未选择', '男', '女', '其他'],
-    trainingOptions: ['未选择', 'HYROX', 'CrossFit', '综合训练'],
-    hyroxOptions: ['未选择', '无参赛经验', '有参赛经验'],
+    sexOptions: ['未选择', '男', '女'],
+    trainingOptions: ['未选择', 'HYROX', 'CrossFit', '综合训练', '跑步'],
+    hyroxOptions: ['未选择', '新手', '完赛过', '多次参赛', 'Pro选手'],
     partnerRoleOptions: ['未选择', '力量担当', '耐力担当', '节奏控场', '全能搭档'],
     sexIndex: 0,
     trainingIndex: 0,
     hyroxIndex: 0,
     partnerRoleIndex: 0,
+  },
+
+  onLoad(query) {
+    const targetOpenid = query && query.openid ? decodeURIComponent(query.openid) : '';
+    this.setData({ viewOpenid: targetOpenid || '' });
   },
 
   onShow() {
@@ -65,17 +64,25 @@ Page({
 
   async initProfile() {
     this.setData({ loading: true });
+    this._eventLookupCache = null;
     try {
-      const { result } = await wx.cloud.callFunction({ name: 'getOpenId' });
-      const openid = result && result.openid ? result.openid : '';
-      if (!openid) {
-        throw new Error('Missing openid');
-      }
+      const openid = await getCurrentOpenid();
+      const viewOpenid = this.data.viewOpenid || '';
+      const targetOpenid = viewOpenid || openid;
+      const isSelf = !viewOpenid || viewOpenid === openid;
 
-      console.log('openid', openid);
-      this.setData({ openid });
-      await this.loadProfile(openid);
-      await this.loadAttendance(openid);
+      this.setData({
+        openid,
+        viewOpenid: targetOpenid,
+        isSelf,
+        isEditing: false,
+        showAuthPrompt: false,
+      });
+
+      await Promise.all([
+        this.loadProfile(targetOpenid, { allowCreate: isSelf }),
+        this.loadAttendance(targetOpenid),
+      ]);
     } catch (err) {
       console.error('Failed to load profile', err);
       wx.showToast({ title: '资料加载失败', icon: 'none' });
@@ -84,155 +91,239 @@ Page({
     }
   },
 
-  async loadProfile(openid) {
-    const res = await db.collection('users').where({ _openid: openid }).get();
-    const role = getRoleByOpenid(openid);
-    if (res.data && res.data.length > 0) {
-      const doc = res.data[0];
-      const finalRole = doc.role || role;
-      const tags = doc.tags || [];
-      const isAdmin = finalRole === 'admin';
-      const roleLabel = this.getRoleLabel(finalRole);
-      const nextProfile = {
-        nickname: doc.nickname || '',
-        age: doc.age || '',
-        heartRate: doc.heartRate || '',
-        bio: doc.bio || '',
-        avatarFileId: doc.avatarFileId || '',
-        wechatId: doc.wechatId || '',
-        tags,
-        sex: doc.sex || '',
-        trainingFocus: doc.trainingFocus || '',
-        hyroxExperience: doc.hyroxExperience || '',
-        partnerRole: doc.partnerRole || '',
-        partnerNote: doc.partnerNote || '',
-        mbti: doc.mbti || '',
-        role: finalRole,
-      };
-      this.setData({
-        profileId: doc._id,
-        profile: nextProfile,
-        tagText: tags.join('，'),
-        isAdmin,
-        isSelf: true,
-        isEditing: false,
-        roleLabel,
-      });
-      this.syncPickerIndexes(nextProfile);
-      this.maybePromptProfileAuth(nextProfile);
-      if (doc.role !== role && (role === 'admin' || role === 'coach')) {
-        await db.collection('users').doc(doc._id).update({ data: { role } });
+  parseTags(rawTags) {
+    if (Array.isArray(rawTags)) return rawTags;
+    if (typeof rawTags === 'string') {
+      try {
+        const parsed = JSON.parse(rawTags);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (err) {
+        return rawTags
+          .split(/,|，/)
+          .map((item) => item.trim())
+          .filter((item) => item);
       }
+    }
+    return [];
+  },
+
+  async loadProfile(openid, options = {}) {
+    const { allowCreate = true } = options;
+    const isSelf = !!this.data.isSelf;
+    const response = isSelf ? await getMe() : await getUserByOpenid(openid);
+    const doc = response && response.profile ? response.profile : null;
+
+    if (!doc) {
+      if (!allowCreate) {
+        const emptyProfile = { ...DEFAULT_PROFILE, role: 'runner' };
+        this.setData({
+          odId: null,
+          profile: emptyProfile,
+          tagText: '',
+          selectedTag: '',
+          canManageEvents: false,
+          isEditing: false,
+          roleLabel: '用户',
+          showAuthPrompt: false,
+        });
+        this.syncPickerIndexes(emptyProfile);
+        return;
+      }
+
+      const emptySelfProfile = { ...DEFAULT_PROFILE, role: 'runner' };
+      this.setData({
+        odId: null,
+        profile: emptySelfProfile,
+        tagText: '',
+        selectedTag: '',
+        canManageEvents: false,
+        isEditing: false,
+        roleLabel: '用户',
+      });
+      this.syncPickerIndexes(emptySelfProfile);
+      this.maybePromptProfileAuth(emptySelfProfile);
       return;
     }
 
-    // Double-check to prevent race condition duplicates
-    const recheck = await db.collection('users').where({ _openid: openid }).get();
-    if (recheck.data && recheck.data.length > 0) {
-      // Another process created the user, use that record
-      return this.loadProfile(openid);
-    }
+    const role = doc.role || 'runner';
+    const tags = this.parseTags(doc.tags);
+    const canManageEvents = isSelf && this.hasEventManageAccess(role);
+    const roleLabel = this.getRoleLabel(role);
 
-    const newProfile = {
-      nickname: '',
-      age: '',
-      heartRate: '',
-      bio: '',
-      avatarFileId: '',
-      wechatId: '',
-      tags: [],
-      sex: '',
-      trainingFocus: '',
-      hyroxExperience: '',
-      partnerRole: '',
-      partnerNote: '',
-      mbti: '',
+    const nextProfile = {
+      nickname: doc.nickname || '',
+      birth_year: doc.birth_year || null,
+      bio: doc.bio || '',
+      avatar_file_id: doc.avatar_file_id || '',
+      wechat_id: doc.wechat_id || '',
+      tags,
+      sex: doc.sex || '',
+      training_focus: doc.training_focus || '',
+      hyrox_level: doc.hyrox_level || '',
+      preferred_partner_role: doc.preferred_partner_role || '',
+      partner_note: doc.partner_note || '',
+      mbti: doc.mbti || '',
       role,
-      _openid: openid, // Explicitly set _openid for consistency
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
     };
+    const selectedTag = tags.find((item) => PREDEFINED_TAGS.includes(item)) || '';
 
-    const addRes = await db.collection('users').add({ data: newProfile });
     this.setData({
-      profileId: addRes._id,
-      profile: newProfile,
-      tagText: '',
-      isAdmin: role === 'admin',
-      isSelf: true,
+      odId: doc.id || null,
+      profile: nextProfile,
+      tagText: Array.isArray(tags) ? tags.join('，') : '',
+      selectedTag,
+      canManageEvents,
       isEditing: false,
-      roleLabel: this.getRoleLabel(role),
+      roleLabel,
     });
-    this.syncPickerIndexes(newProfile);
-    this.maybePromptProfileAuth(newProfile);
+
+    this.syncPickerIndexes(nextProfile);
+    if (isSelf) {
+      this.maybePromptProfileAuth(nextProfile);
+    } else {
+      this.setData({ showAuthPrompt: false });
+    }
   },
 
   async loadAttendance(openid) {
-    // Use event_participants as the single source of truth (merged with event_attendance)
     try {
-      const res = await db
-        .collection('event_participants')
-        .where({ _openid: openid })
-        .orderBy('createdAt', 'desc')
-        .get();
+      const response = this.data.isSelf ? await getMe() : await getUserByOpenid(openid);
+      const records = response && Array.isArray(response.attendance_records)
+        ? response.attendance_records
+        : [];
 
-      const records = (res.data || []).map((record) => {
-        // Map event_participants fields to display format
-        const eventName = record.eventTitle || record.eventName || '赛事记录';
-        const gymName = record.eventLocation || record.gymName || '未填写场馆';
-        const baseStrength = Number(record.baseStrength || 0);
-        const baseEndurance = Number(record.baseEndurance || 0);
-        const adjustStrength = Number(record.coachAdjustStrength || 0);
-        const adjustEndurance = Number(record.coachAdjustEndurance || 0);
-        const finalStrength = Number(record.finalStrength || baseStrength + adjustStrength);
-        const finalEndurance = Number(record.finalEndurance || baseEndurance + adjustEndurance);
-        return { ...record, eventName, gymName, finalStrength, finalEndurance };
+      let mappedRecords = (records || []).map((record) => {
+        const eventId = this.normalizeEventId(
+          record && (
+            record.event_id
+            || record.eventId
+            || record.eventID
+          )
+        );
+        const eventName = record.event_title || '赛事记录';
+        const eventDate = record.event_date || '';
+        const eventLocation = record.event_location || '';
+        const gymName = eventLocation || '未填写场馆';
+        const baseStrength = Number(record.base_strength || 0);
+        const baseEndurance = Number(record.base_endurance || 0);
+        const adjustStrength = Number(record.coach_adjust_strength || 0);
+        const adjustEndurance = Number(record.coach_adjust_endurance || 0);
+        const finalStrength = Number(record.final_strength || baseStrength + adjustStrength);
+        const finalEndurance = Number(record.final_endurance || baseEndurance + adjustEndurance);
+        return {
+          ...record,
+          eventId,
+          eventName,
+          eventDate,
+          eventLocation,
+          gymName,
+          finalStrength,
+          finalEndurance,
+        };
       });
-      const scores = this.calculateScores(records);
+
+      if (mappedRecords.some((item) => !item.eventId)) {
+        mappedRecords = await this.fillMissingEventIds(mappedRecords);
+      }
 
       this.setData({
-        attendanceRecords: records,
-        strengthScore: scores.strength,
-        enduranceScore: scores.endurance,
+        attendanceRecords: mappedRecords,
       });
     } catch (err) {
-      // Handle case where collection doesn't exist yet
-      console.log('No attendance records or collection not exists', err.message);
+      console.log('No attendance records found', err.message);
       this.setData({
         attendanceRecords: [],
-        strengthScore: 0,
-        enduranceScore: 0,
       });
     }
-  },
-
-  calculateScores(records) {
-    if (!records.length) {
-      return { strength: 0, endurance: 0 };
-    }
-
-    let strengthSum = 0;
-    let enduranceSum = 0;
-    let count = 0;
-
-    records.forEach((record) => {
-      const finalStrength = Number(record.finalStrength || 0);
-      const finalEndurance = Number(record.finalEndurance || 0);
-      strengthSum += finalStrength;
-      enduranceSum += finalEndurance;
-      count += 1;
-    });
-
-    return {
-      strength: Number((strengthSum / count).toFixed(1)),
-      endurance: Number((enduranceSum / count).toFixed(1)),
-    };
   },
 
   getRoleLabel(role) {
-    if (role === 'admin') return '管理员';
-    if (role === 'coach') return '教练';
+    const normalizedRole = String(role || '').trim().toLowerCase();
+    if (normalizedRole === 'admin') return '管理员';
+    if (normalizedRole === 'coach') return '教练';
+    if (normalizedRole === 'organizer') return '组织者';
     return '用户';
+  },
+
+  hasEventManageAccess(role) {
+    const normalizedRole = String(role || '').trim().toLowerCase();
+    return normalizedRole === 'admin'
+      || normalizedRole === 'coach'
+      || normalizedRole === 'organizer';
+  },
+
+  normalizeEventId(value) {
+    if (value === undefined || value === null) return '';
+    const text = String(value).trim();
+    if (!text || text === 'null' || text === 'undefined') return '';
+    const numeric = Number(text);
+    return Number.isFinite(numeric) && numeric > 0 ? String(numeric) : '';
+  },
+
+  normalizeLookupText(value) {
+    return String(value || '').trim().toLowerCase();
+  },
+
+  buildEventLookup(events) {
+    const byExact = new Map();
+    const byTitleDate = new Map();
+    const byTitle = new Map();
+
+    (events || []).forEach((event) => {
+      const eventId = this.normalizeEventId(event && event.id);
+      if (!eventId) return;
+
+      const title = this.normalizeLookupText(event && event.title);
+      const date = this.normalizeLookupText(event && event.event_date);
+      const location = this.normalizeLookupText(event && event.location);
+      if (!title) return;
+
+      byExact.set(`${title}|${date}|${location}`, eventId);
+      if (!byTitleDate.has(`${title}|${date}`)) {
+        byTitleDate.set(`${title}|${date}`, eventId);
+      }
+      if (!byTitle.has(title)) {
+        byTitle.set(title, eventId);
+      }
+    });
+
+    return { byExact, byTitleDate, byTitle };
+  },
+
+  resolveEventIdByMeta(meta, lookup) {
+    const title = this.normalizeLookupText(meta && meta.eventName);
+    const date = this.normalizeLookupText(meta && meta.eventDate);
+    const location = this.normalizeLookupText(meta && meta.eventLocation);
+    if (!title || !lookup) return '';
+
+    return lookup.byExact.get(`${title}|${date}|${location}`)
+      || lookup.byTitleDate.get(`${title}|${date}`)
+      || lookup.byTitle.get(title)
+      || '';
+  },
+
+  async getEventLookup() {
+    if (this._eventLookupCache) {
+      return this._eventLookupCache;
+    }
+    const response = await listEvents();
+    const events = response && Array.isArray(response.events) ? response.events : [];
+    this._eventLookupCache = this.buildEventLookup(events);
+    return this._eventLookupCache;
+  },
+
+  async fillMissingEventIds(records) {
+    try {
+      const lookup = await this.getEventLookup();
+      return (records || []).map((record) => {
+        if (record.eventId) return record;
+        const resolvedId = this.resolveEventIdByMeta(record, lookup);
+        return resolvedId ? { ...record, eventId: resolvedId } : record;
+      });
+    } catch (err) {
+      console.warn('Resolve attendance event ids failed', err);
+      return records;
+    }
   },
 
   handleInput(e) {
@@ -242,12 +333,19 @@ Page({
       this.setData({ tagText: value });
       return;
     }
-    const key = `profile.${field}`;
-    this.setData({ [key]: value });
+    this.setData({ [`profile.${field}`]: value });
+  },
+
+  handleTagSelect(e) {
+    const tag = e.currentTarget.dataset.tag || '';
+    if (!tag) return;
+    this.setData({
+      selectedTag: this.data.selectedTag === tag ? '' : tag,
+    });
   },
 
   maybePromptProfileAuth(profile) {
-    const needsAuth = !(profile.nickname && profile.avatarFileId);
+    const needsAuth = !(profile.nickname && profile.avatar_file_id);
     this.setData({ showAuthPrompt: needsAuth });
   },
 
@@ -255,9 +353,7 @@ Page({
     this.setData({ showAuthPrompt: false });
   },
 
-  // New avatar selection handler (replaces deprecated wx.getUserProfile)
   async onChooseAvatar(e) {
-    console.log('onChooseAvatar triggered', e.detail);
     const tempFilePath = e.detail.avatarUrl;
     if (!tempFilePath) {
       wx.showToast({ title: '未选择头像', icon: 'none' });
@@ -268,63 +364,40 @@ Page({
     wx.showLoading({ title: '上传中...' });
 
     try {
-      // Upload to cloud storage
       const cloudPath = `avatars/${this.data.openid}_${Date.now()}.jpg`;
-      console.log('Uploading avatar to:', cloudPath);
       const uploadRes = await wx.cloud.uploadFile({
         cloudPath,
         filePath: tempFilePath,
       });
-      const avatarFileId = uploadRes.fileID;
-      console.log('Avatar uploaded:', avatarFileId);
+      const avatar_file_id = uploadRes.fileID;
 
-      const profileId = this.data.profileId;
       const updatedProfile = {
         ...this.data.profile,
-        avatarFileId,
+        avatar_file_id,
       };
 
       this.setData({
         profile: updatedProfile,
-        showAuthPrompt: !(updatedProfile.nickname && updatedProfile.avatarFileId),
+        showAuthPrompt: !(updatedProfile.nickname && updatedProfile.avatar_file_id),
       });
 
-      if (profileId) {
-        console.log('Saving avatar to profile:', profileId);
-        await db.collection('users').doc(profileId).update({
-          data: {
-            avatarFileId,
-            updatedAt: Date.now(),
-          },
-        });
-      }
+      await updateMyProfile({ avatar_file_id });
 
       wx.hideLoading();
       wx.showToast({ title: '头像已更新', icon: 'success' });
     } catch (err) {
       wx.hideLoading();
       console.error('Avatar upload failed', err);
-      const errMsg = err.errMsg || err.message || '头像上传失败';
-      if (errMsg.includes('permission') || errMsg.includes('PERMISSION_DENIED')) {
-        wx.showModal({
-          title: '权限不足',
-          content: '请检查云存储或数据库权限设置。',
-          showCancel: false,
-        });
-      } else {
-        wx.showToast({ title: '头像上传失败', icon: 'none' });
-      }
+      wx.showToast({ title: '头像上传失败', icon: 'none' });
     } finally {
       this.setData({ authLoading: false });
     }
   },
 
-  // New nickname input handler (replaces deprecated wx.getUserProfile)
-  async onNicknameInput(e) {
+  onNicknameChange(e) {
     const nickname = (e.detail.value || '').trim();
     if (!nickname) return;
 
-    const profileId = this.data.profileId;
     const updatedProfile = {
       ...this.data.profile,
       nickname,
@@ -332,25 +405,40 @@ Page({
 
     this.setData({
       profile: updatedProfile,
-      showAuthPrompt: !(updatedProfile.nickname && updatedProfile.avatarFileId),
+      showAuthPrompt: !(updatedProfile.nickname && updatedProfile.avatar_file_id),
     });
 
-    if (profileId) {
-      try {
-        await db.collection('users').doc(profileId).update({
-          data: {
-            nickname,
-            updatedAt: Date.now(),
-          },
-        });
-      } catch (err) {
-        console.error('Nickname update failed', err);
-      }
+    this.saveNickname(nickname);
+  },
+
+  async onNicknameInput(e) {
+    const nickname = (e.detail.value || '').trim();
+    if (!nickname) return;
+
+    const updatedProfile = {
+      ...this.data.profile,
+      nickname,
+    };
+
+    this.setData({
+      profile: updatedProfile,
+      showAuthPrompt: !(updatedProfile.nickname && updatedProfile.avatar_file_id),
+    });
+
+    await this.saveNickname(nickname);
+  },
+
+  async saveNickname(nickname) {
+    if (!nickname) return;
+
+    try {
+      await updateMyProfile({ nickname });
+    } catch (err) {
+      console.error('Nickname update failed', err);
     }
   },
 
   handleAuthConfirm() {
-    // Close the auth prompt - user will use the avatar button and nickname input
     this.setData({ showAuthPrompt: false });
   },
 
@@ -360,9 +448,11 @@ Page({
     const optionKey = OPTION_MAP[field];
     const indexKey = INDEX_MAP[field];
     if (!optionKey || !indexKey) return;
+
     const options = this.data[optionKey] || [];
     const picked = options[index] || '';
     const value = picked === '未选择' ? '' : picked;
+
     this.setData({
       [indexKey]: index,
       [`profile.${field}`]: value,
@@ -370,11 +460,9 @@ Page({
   },
 
   async handleWechatIdBlur(e) {
-    const wechatId = (e.detail.value || '').trim();
-    if (!wechatId || !this.data.openid) {
-      return;
-    }
-    await this.trySyncWechatProfile(wechatId);
+    const wechat_id = (e.detail.value || '').trim();
+    if (!wechat_id || !this.data.openid) return;
+    await this.trySyncWechatProfile(wechat_id);
   },
 
   handleEditAction() {
@@ -384,66 +472,16 @@ Page({
         isEditing: true,
         backupProfile,
         backupTagText: this.data.tagText,
+        backupSelectedTag: this.data.selectedTag,
       });
       return;
     }
-
     this.saveProfile();
   },
 
-  async trySyncWechatProfile(wechatId) {
-    if (this.data.syncingWechatId) return;
-    this.setData({ syncingWechatId: true });
-    try {
-      const res = await db.collection('users').where({ wechatId }).get();
-      const list = res.data || [];
-      const matched = list.find((doc) => doc._openid && doc._openid !== this.data.openid) || list[0];
-      if (!matched || (matched._openid && matched._openid === this.data.openid)) {
-        return;
-      }
-
-      const confirmRes = await new Promise((resolve) => {
-        wx.showModal({
-          title: '发现已有资料',
-          content: '是否同步已预录的资料到当前账号？',
-          confirmText: '同步',
-          cancelText: '稍后',
-          success: resolve,
-          fail: () => resolve({ confirm: false }),
-        });
-      });
-
-      if (!confirmRes.confirm) return;
-
-      const current = { ...this.data.profile };
-      const merged = {
-        ...current,
-        nickname: current.nickname || matched.nickname || '',
-        age: current.age || matched.age || '',
-        heartRate: current.heartRate || matched.heartRate || '',
-        bio: current.bio || matched.bio || '',
-        avatarFileId: current.avatarFileId || matched.avatarFileId || '',
-        tags: (current.tags && current.tags.length ? current.tags : matched.tags) || [],
-        sex: current.sex || matched.sex || '',
-        trainingFocus: current.trainingFocus || matched.trainingFocus || '',
-        hyroxExperience: current.hyroxExperience || matched.hyroxExperience || '',
-        partnerRole: current.partnerRole || matched.partnerRole || '',
-        partnerNote: current.partnerNote || matched.partnerNote || '',
-        mbti: current.mbti || matched.mbti || '',
-      };
-
-      this.setData({
-        profile: merged,
-        tagText: (merged.tags || []).join('，'),
-      });
-      this.syncPickerIndexes(merged);
-      wx.showToast({ title: '已同步资料', icon: 'success' });
-    } catch (err) {
-      console.error('Sync profile failed', err);
-      wx.showToast({ title: '同步失败', icon: 'none' });
-    } finally {
-      this.setData({ syncingWechatId: false });
-    }
+  async trySyncWechatProfile(wechat_id) {
+    if (!wechat_id) return;
+    wx.showToast({ title: '自动同步将在后续版本开放', icon: 'none' });
   },
 
   cancelEdit() {
@@ -452,10 +490,11 @@ Page({
       isEditing: false,
       profile: restoredProfile,
       tagText: this.data.backupTagText || '',
+      selectedTag: this.data.backupSelectedTag || '',
       backupProfile: null,
       backupTagText: '',
+      backupSelectedTag: '',
     });
-    // Sync picker indexes to restored profile values
     this.syncPickerIndexes(restoredProfile);
   },
 
@@ -473,71 +512,83 @@ Page({
   },
 
   async saveProfile() {
-    const { profileId, profile, tagText, openid } = this.data;
-    if (!profileId) {
-      console.error('saveProfile: No profileId found');
-      wx.showToast({ title: '请先完成注册', icon: 'none' });
-      return;
-    }
+    const { profile, selectedTag } = this.data;
 
     wx.showLoading({ title: '保存中...' });
 
-    const tags = tagText
-      .split(/,|，/)
-      .map((item) => item.trim())
-      .filter((item) => item);
+    const tags = selectedTag ? [selectedTag] : [];
 
     const payload = {
       nickname: profile.nickname,
-      age: profile.age ? Number(profile.age) : '',
-      heartRate: profile.heartRate ? Number(profile.heartRate) : '',
+      birth_year: profile.birth_year ? Number(profile.birth_year) : null,
       bio: profile.bio,
-      avatarFileId: profile.avatarFileId,
-      wechatId: profile.wechatId,
-      tags,
+      avatar_file_id: profile.avatar_file_id,
+      wechat_id: profile.wechat_id,
+      tags: JSON.stringify(tags),
       sex: profile.sex,
-      trainingFocus: profile.trainingFocus,
-      hyroxExperience: profile.hyroxExperience,
-      partnerRole: profile.partnerRole,
-      partnerNote: profile.partnerNote,
+      training_focus: profile.training_focus,
+      hyrox_level: profile.hyrox_level,
+      preferred_partner_role: profile.preferred_partner_role,
+      partner_note: profile.partner_note,
       mbti: profile.mbti,
-      role: profile.role || getRoleByOpenid(openid),
-      updatedAt: Date.now(),
     };
 
-    console.log('saveProfile: Saving payload', profileId, payload);
-
     try {
-      await db.collection('users').doc(profileId).update({ data: payload });
-      console.log('saveProfile: Success');
+      await updateMyProfile({ ...payload, tags });
+
       wx.hideLoading();
       this.setData({
         isEditing: false,
         profile: { ...profile, tags },
         tagText: tags.join('，'),
+        selectedTag: tags[0] || '',
         backupProfile: null,
         backupTagText: '',
+        backupSelectedTag: '',
       });
       this.maybePromptProfileAuth({ ...profile, tags });
       wx.showToast({ title: '已保存', icon: 'success' });
     } catch (err) {
       wx.hideLoading();
       console.error('Failed to save profile', err);
-      const errMsg = err.errMsg || err.message || '保存失败';
-      if (errMsg.includes('permission') || errMsg.includes('PERMISSION_DENIED')) {
-        wx.showModal({
-          title: '权限不足',
-          content: '请在 CloudBase 控制台设置 users 集合的安全规则，允许用户更新自己的记录。',
-          showCancel: false,
-        });
-      } else {
-        wx.showToast({ title: '保存失败', icon: 'none' });
-      }
+      wx.showToast({ title: '保存失败', icon: 'none' });
     }
   },
 
   goAdminEvents() {
     wx.navigateTo({ url: '/pages/admin-events/admin-events' });
+  },
+
+  async handleAttendanceTap(e) {
+    const eventIdRaw = e.currentTarget.dataset.eventId;
+    const eventId = this.normalizeEventId(eventIdRaw);
+    if (eventId) {
+      wx.navigateTo({
+        url: `/pages/event-detail/event-detail?id=${encodeURIComponent(eventId)}`,
+      });
+      return;
+    }
+
+    try {
+      const lookup = await this.getEventLookup();
+      const resolvedId = this.resolveEventIdByMeta({
+        eventName: e.currentTarget.dataset.eventName,
+        eventDate: e.currentTarget.dataset.eventDate,
+        eventLocation: e.currentTarget.dataset.eventLocation,
+      }, lookup);
+      if (resolvedId) {
+        wx.navigateTo({
+          url: `/pages/event-detail/event-detail?id=${encodeURIComponent(resolvedId)}`,
+        });
+        return;
+      }
+    } catch (err) {
+      console.warn('Resolve attendance event id on tap failed', err);
+    }
+
+    if (!eventId) {
+      wx.showToast({ title: '该记录缺少赛事信息', icon: 'none' });
+    }
   },
 
   syncPickerIndexes(profile) {

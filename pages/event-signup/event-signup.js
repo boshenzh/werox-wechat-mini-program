@@ -1,25 +1,24 @@
-const db = wx.cloud.database();
+const { getMe, getEventDetail, getMyRegistration, createRegistration } = require('../../utils/api');
 
 Page({
   data: {
-    eventId: '',
-    openid: '',
+    eventId: null,
     event: null,
     profile: null,
     form: {
-      groupType: '',
-      partnerName: '',
+      division: '',
+      teamName: '',
       note: '',
     },
-    groupOptions: ['未选择', '单人', '双人', '接力'],
-    groupIndex: 0,
+    divisionOptions: ['未选择'],
+    divisionIndex: 0,
     loading: true,
     submitting: false,
     isSigned: false,
   },
 
   onLoad(query) {
-    const eventId = query && query.id ? query.id : '';
+    const eventId = query && query.id ? Number(query.id) : null;
     this.setData({ eventId });
     this.initPage();
   },
@@ -27,15 +26,10 @@ Page({
   async initPage() {
     this.setData({ loading: true });
     try {
-      const { result } = await wx.cloud.callFunction({ name: 'getOpenId' });
-      const openid = result && result.openid ? result.openid : '';
-      if (!openid) throw new Error('Missing openid');
-      this.setData({ openid });
-
       await Promise.all([
         this.loadEvent(this.data.eventId),
-        this.loadProfile(openid),
-        this.checkSigned(openid),
+        this.loadProfile(),
+        this.checkSigned(),
       ]);
     } catch (err) {
       console.error('Init signup failed', err);
@@ -47,68 +41,57 @@ Page({
 
   async loadEvent(eventId) {
     if (!eventId) return;
-    const res = await db.collection('events').doc(eventId).get();
-    const event = res.data || null;
-    if (event) {
+    try {
+      const detail = await getEventDetail(eventId);
+      const event = detail && detail.event ? detail.event : null;
+      if (!event) return;
+
+      let divisions = event.available_divisions || [];
+      if (typeof divisions === 'string') {
+        try {
+          divisions = JSON.parse(divisions);
+        } catch (e) {
+          divisions = [];
+        }
+      }
+
+      const divisionOptions = ['未选择', ...divisions];
+
       this.setData({
         event: {
-          id: event._id,
+          id: event.id,
           title: event.title || '未命名赛事',
-          dateText: event.date || event.dateText || '待定',
+          dateText: event.event_date || '待定',
           location: event.location || '待定',
-          price: event.price || 0,
-          maxParticipants: event.maxParticipants || null,
+          priceOpen: event.price_open || 0,
+          priceDoubles: event.price_doubles || 0,
+          priceRelay: event.price_relay || 0,
+          maxParticipants: event.max_participants || null,
+          formatMode: event.format_mode || 'for_time',
         },
+        divisionOptions,
       });
+    } catch (err) {
+      console.error('Load event failed', err);
     }
   },
 
-  async loadProfile(openid) {
-    const res = await db.collection('users').where({ _openid: openid }).get();
-    if (res.data && res.data.length > 0) {
-      this.setData({ profile: res.data[0] });
-      return;
+  async loadProfile() {
+    try {
+      const me = await getMe();
+      this.setData({ profile: me && me.profile ? me.profile : null });
+    } catch (err) {
+      console.error('Load profile failed', err);
     }
-
-    // Double-check to prevent race condition duplicates
-    const recheck = await db.collection('users').where({ _openid: openid }).get();
-    if (recheck.data && recheck.data.length > 0) {
-      this.setData({ profile: recheck.data[0] });
-      return;
-    }
-
-    const newProfile = {
-      nickname: '',
-      age: '',
-      heartRate: '',
-      bio: '',
-      avatarFileId: '',
-      wechatId: '',
-      tags: [],
-      sex: '',
-      trainingFocus: '',
-      hyroxExperience: '',
-      partnerRole: '',
-      partnerNote: '',
-      mbti: '',
-      role: 'user',
-      _openid: openid, // Explicitly set _openid for consistency
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    const addRes = await db.collection('users').add({ data: newProfile });
-    this.setData({ profile: { ...newProfile, _id: addRes._id, _openid: openid } });
   },
 
-  async checkSigned(openid) {
+  async checkSigned() {
     if (!this.data.eventId) return;
-    const res = await db
-      .collection('event_participants')
-      .where({ eventId: this.data.eventId, _openid: openid })
-      .limit(1)
-      .get();
-    if (res.data && res.data.length > 0) {
-      this.setData({ isSigned: true });
+    try {
+      const result = await getMyRegistration(this.data.eventId);
+      this.setData({ isSigned: !!(result && result.is_signed) });
+    } catch (err) {
+      console.error('Check signed failed', err);
     }
   },
 
@@ -119,12 +102,12 @@ Page({
     this.setData({ [key]: value });
   },
 
-  handleGroupChange(e) {
+  handleDivisionChange(e) {
     const index = Number(e.detail.value);
-    const picked = this.data.groupOptions[index] || '';
+    const picked = this.data.divisionOptions[index] || '';
     this.setData({
-      groupIndex: index,
-      'form.groupType': picked === '未选择' ? '' : picked,
+      divisionIndex: index,
+      'form.division': picked === '未选择' ? '' : picked,
     });
   },
 
@@ -134,66 +117,27 @@ Page({
       wx.showToast({ title: '赛事不存在', icon: 'none' });
       return;
     }
+
+    if (!this.data.form.division) {
+      wx.showToast({ title: '请选择组别', icon: 'none' });
+      return;
+    }
+
     this.setData({ submitting: true });
+
     try {
-      const countRes = await db
-        .collection('event_participants')
-        .where({ eventId: this.data.eventId })
-        .count();
-      const total = countRes.total || 0;
-      if (this.data.event.maxParticipants && total >= Number(this.data.event.maxParticipants)) {
-        wx.showToast({ title: '报名已满', icon: 'none' });
-        return;
-      }
+      await createRegistration(this.data.eventId, {
+        division: this.data.form.division,
+        team_name: this.data.form.teamName || '',
+        note: this.data.form.note || '',
+      });
 
-      const dupRes = await db
-        .collection('event_participants')
-        .where({ eventId: this.data.eventId, _openid: this.data.openid })
-        .limit(1)
-        .get();
-      if (dupRes.data && dupRes.data.length > 0) {
-        wx.showToast({ title: '你已报名过', icon: 'none' });
-        this.setData({ isSigned: true });
-        return;
-      }
-
-      const profile = this.data.profile || {};
-      const profileSnapshot = {
-        nickname: profile.nickname || '',
-        wechatId: profile.wechatId || '',
-        sex: profile.sex || '',
-        trainingFocus: profile.trainingFocus || '',
-        hyroxExperience: profile.hyroxExperience || '',
-        partnerRole: profile.partnerRole || '',
-        partnerNote: profile.partnerNote || '',
-        mbti: profile.mbti || '',
-        avatarFileId: profile.avatarFileId || '',
-        tags: profile.tags || [],
-      };
-
-      const payload = {
-        eventId: this.data.eventId,
-        eventTitle: this.data.event.title,
-        eventDate: this.data.event.dateText,
-        eventLocation: this.data.event.location,
-        price: this.data.event.price || 0,
-        maxParticipants: this.data.event.maxParticipants || null,
-        profileSnapshot,
-        eventForm: {
-          groupType: this.data.form.groupType || '',
-          partnerName: this.data.form.partnerName || '',
-          note: this.data.form.note || '',
-        },
-        createdAt: Date.now(),
-      };
-
-      await db.collection('event_participants').add({ data: payload });
       wx.showToast({ title: '报名成功', icon: 'success' });
       this.setData({ isSigned: true });
       setTimeout(() => wx.navigateBack(), 600);
     } catch (err) {
       console.error('Signup failed', err);
-      wx.showToast({ title: '报名失败', icon: 'none' });
+      wx.showToast({ title: err.message || '报名失败', icon: 'none' });
     } finally {
       this.setData({ submitting: false });
     }

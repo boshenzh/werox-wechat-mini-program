@@ -1,87 +1,219 @@
 <view class="page">
+  <!-- Cover Card -->
   <view class="card cover-card" wx:if="{{event}}">
-    <view class="cover" style="background-image: url({{event.coverUrl}});">
-      <view class="cover-badge">{{event.statusText}}</view>
+    <view class="cover" style="background-image: url('{{event.coverUrl}}');">
+      <view class="cover-overlay"></view>
+      <view class="cover-badge status-badge-{{event.status}}">{{event.statusText}}</view>
+      <view class="type-badge" wx:if="{{event.eventTypeText}}">{{event.eventTypeText}}</view>
     </view>
     <view class="cover-body">
-      <text class="event-title">{{event.title}}</text>
-      <text class="event-meta">{{event.dateText}} · {{event.location}}</text>
-      <text class="event-desc">{{event.description}}</text>
-      <view class="event-meta-row">
-        <text class="meta-chip">人数上限 {{event.maxParticipants || '不限'}}</text>
-        <text class="meta-chip">费用 {{event.price ? event.price + '元/人' : '免费'}}</text>
+      <view class="title-row">
+        <text class="event-title">{{event.title}}</text>
       </view>
-      <button class="primary-btn" bindtap="handleRegister">{{isFull ? '报名已满' : '立即报名'}}</button>
+      <view class="event-meta-chips">
+        <view class="meta-chip" wx:if="{{event.eventTypeText}}">
+          <text>{{event.eventTypeText}}</text>
+        </view>
+        <view class="meta-chip" wx:if="{{event.formatModeText}}">
+          <text>{{event.formatModeText}}</text>
+        </view>
+      </view>
+
+      <view class="ordered-row">
+        <text class="row-label">时间</text>
+        <view class="row-content">
+          <text class="row-main">{{event.dateText}}{{event.eventTime ? (' ' + event.eventTime) : ''}}</text>
+        </view>
+      </view>
+
+      <view class="ordered-row clickable-row" bindtap="openParticipantSheet">
+        <text class="row-label">参赛选手</text>
+        <view class="row-content participants-row-content">
+          <view class="participants-preview" wx:if="{{participantPreview.length > 0}}">
+            <image
+              class="preview-avatar"
+              wx:for="{{participantPreview}}"
+              wx:key="id"
+              src="{{item.avatarFileId}}"
+              mode="aspectFill"
+              wx:if="{{item.avatarFileId}}"
+              style="z-index: {{participantPreview.length - index}}"
+            />
+            <view
+              class="preview-avatar placeholder"
+              wx:for="{{participantPreview}}"
+              wx:key="id"
+              wx:if="{{!item.avatarFileId}}"
+              style="z-index: {{participantPreview.length - index}}"
+            >
+              <image src="/assets/icons/user-placeholder.png" mode="aspectFit" />
+            </view>
+          </view>
+          <text class="row-main">{{participants.length}}人</text>
+          <text class="row-arrow">›</text>
+        </view>
+      </view>
+
+      <view class="ordered-row clickable-row" bindtap="openLocation">
+        <text class="row-label">地点</text>
+        <view class="row-content">
+          <text class="row-main">{{event.location || '待定'}}</text>
+          <text class="row-arrow" wx:if="{{event.latitude && event.longitude}}">›</text>
+        </view>
+      </view>
+
+      <view class="ordered-row desc-row">
+        <text class="row-label">赛事介绍</text>
+        <view class="row-content desc-content">
+          <text class="event-desc">{{event.description}}</text>
+        </view>
+      </view>
+
+      <!-- Registration Info -->
+      <view class="reg-info">
+        <view class="reg-item">
+          <text class="reg-label">人数上限</text>
+          <text class="reg-value">{{event.maxParticipants || '不限'}}</text>
+        </view>
+        <view class="reg-divider"></view>
+        <view class="reg-item">
+          <text class="reg-label">费用</text>
+          <text class="reg-value">{{event.price ? event.price + '元' : '免费'}}</text>
+        </view>
+        <view class="reg-divider"></view>
+        <view class="reg-item">
+          <text class="reg-label">已报名</text>
+          <text class="reg-value">{{participants.length}}人</text>
+        </view>
+      </view>
+
+      <!-- Intensity Indicators -->
+      <view class="intensity-section" wx:if="{{event.baseStrength > 0 || event.baseEndurance > 0}}">
+        <view class="intensity-row">
+          <view class="intensity-item">
+            <text class="intensity-label">强度</text>
+            <view class="intensity-bar">
+              <view class="intensity-fill strength" style="width: {{event.baseStrength * 10}}%"></view>
+            </view>
+            <text class="intensity-value">{{event.baseStrength}}/10</text>
+          </view>
+          <view class="intensity-item">
+            <text class="intensity-label">耐力</text>
+            <view class="intensity-bar">
+              <view class="intensity-fill endurance" style="width: {{event.baseEndurance * 10}}%"></view>
+            </view>
+            <text class="intensity-value">{{event.baseEndurance}}/10</text>
+          </view>
+        </view>
+      </view>
     </view>
   </view>
 
+  <!-- Stations Card -->
+  <view class="card info-card" wx:if="{{event && stations.length > 0}}">
+    <view class="section-header">
+      <text class="section-title">赛事站点</text>
+      <text class="subtext">共 {{stations.length}} 站</text>
+    </view>
+    <view class="stations-list">
+      <view class="station-item" wx:for="{{stations}}" wx:key="id">
+        <view class="station-order">{{item.order}}</view>
+        <view class="station-info">
+          <text class="station-name">{{item.name}}</text>
+          <text class="station-target">{{item.targetValue}} {{item.targetUnit}}</text>
+        </view>
+        <view class="station-weight" wx:if="{{item.weightMale || item.weightFemale}}">
+          <text wx:if="{{item.weightMale}}">♂{{item.weightMale}}kg</text>
+          <text wx:if="{{item.weightFemale}}">♀{{item.weightFemale}}kg</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- Highlights Card -->
   <view class="card info-card" wx:if="{{event && event.highlights.length}}">
     <text class="section-title">赛事亮点</text>
     <view class="highlight-list">
       <view class="highlight-item" wx:for="{{event.highlights}}" wx:key="index">
-        <text class="highlight-dot">•</text>
+        <view class="highlight-dot"></view>
         <text class="highlight-text">{{item}}</text>
       </view>
     </view>
   </view>
 
+  <!-- Poster Card -->
   <view class="card info-card" wx:if="{{event && event.posterUrl}}">
     <text class="section-title">赛事海报</text>
-    <image class="poster-img" src="{{event.posterUrl}}" mode="widthFix" />
+    <image class="poster-img" src="{{event.posterUrl}}" mode="widthFix" show-menu-by-longpress="true" />
   </view>
 
+  <!-- Album Card -->
   <view class="card info-card">
-    <view class="album-header">
+    <view class="section-header">
       <text class="section-title">赛事相册</text>
-      <button class="primary-btn" bindtap="handleUpload">上传照片</button>
+      <button class="ghost-btn upload-btn" bindtap="handleUpload" wx:if="{{albumSummary.canUpload}}">
+        <image src="/assets/icons/upload.png" class="btn-icon" mode="aspectFit" />
+        <text>上传</text>
+      </button>
     </view>
-    <text class="subtext">照片会同步到该赛事相册。</text>
-    <view class="empty-state-inline">
-      <view class="empty-icon">📷</view>
-      <text class="subtext">暂未上传照片</text>
-    </view>
-  </view>
-
-  <view class="card info-card" wx:if="{{event}}">
-    <view class="album-header">
-      <text class="section-title">参赛选手</text>
-      <text class="subtext">{{participants.length}} 人</text>
-    </view>
-    <view class="participants-list" wx:if="{{participants.length > 0}}">
-      <view class="participant-item" wx:for="{{showAllParticipants ? participants : displayParticipants}}" wx:key="_id">
-        <image
-          class="participant-avatar"
-          src="{{item.avatarFileId}}"
-          mode="aspectFill"
-          wx:if="{{item.avatarFileId}}"
-        />
-        <view class="participant-avatar placeholder" wx:else>
-          <text class="avatar-icon">👤</text>
-        </view>
-        <view class="participant-info">
-          <text class="participant-name">{{item.nickname}}</text>
-          <text class="subtext">{{item.trainingFocus || '训练方向未填写'}}</text>
-          <text class="subtext">{{item.groupType || '报名组别未填写'}}</text>
-        </view>
+    <text class="subtext" wx:if="{{albumSummary.canView}}">
+      共 {{albumSummary.totalPhotos}} 张照片，支持查看与下载原图
+    </text>
+    <text class="subtext" wx:else>
+      仅参赛选手可查看赛事相册
+    </text>
+    <view class="empty-state-inline" wx:if="{{albumSummary.totalPhotos === 0}}">
+      <view class="empty-icon">
+        <image src="/assets/icons/camera.png" mode="aspectFit" />
       </view>
-      <button class="view-more-btn" wx:if="{{!showAllParticipants && participants.length > 5}}" bindtap="toggleParticipants">
-        查看全部 ({{participants.length}}人)
-      </button>
-      <button class="view-more-btn" wx:if="{{showAllParticipants && participants.length > 5}}" bindtap="toggleParticipants">
-        收起列表
-      </button>
+      <text class="subtext">{{albumSummary.canUpload ? '还没有照片，点击上传第一张' : '暂未上传照片'}}</text>
     </view>
-    <view class="empty-state-inline" wx:else>
-      <view class="empty-icon">👥</view>
-      <text class="subtext">暂无报名选手</text>
-    </view>
+    <button class="ghost-btn album-entry-btn" bindtap="openAlbum">进入相册</button>
   </view>
 
+  <!-- Empty State -->
   <view class="empty-state-box" wx:if="{{!loading && !event}}">
     <view class="empty-state-icon">
-      <text>🔍</text>
+      <image src="/assets/icons/search.png" mode="aspectFit" />
     </view>
     <text class="empty-state-title">赛事不存在</text>
     <text class="empty-state-desc">该赛事可能已下架或不存在</text>
+  </view>
+
+  <view class="participant-sheet-mask" wx:if="{{showParticipantSheet}}" bindtap="closeParticipantSheet"></view>
+  <view class="participant-sheet" wx:if="{{showParticipantSheet}}" catchtap="noop">
+    <view class="sheet-header">
+      <text class="sheet-title">参赛选手</text>
+      <text class="sheet-close" bindtap="closeParticipantSheet">关闭</text>
+    </view>
+    <scroll-view class="sheet-list" scroll-y="{{true}}">
+      <view class="sheet-empty" wx:if="{{participants.length === 0}}">
+        <text class="subtext">暂无报名选手</text>
+      </view>
+      <view
+        class="sheet-participant-item"
+        wx:for="{{participants}}"
+        wx:key="id"
+        data-openid="{{item.userOpenid}}"
+        bindtap="goRunnerProfile"
+      >
+        <image class="participant-avatar" src="{{item.avatarFileId}}" mode="aspectFill" wx:if="{{item.avatarFileId}}" />
+        <view class="participant-avatar placeholder" wx:else>
+          <image src="/assets/icons/user-placeholder.png" mode="aspectFit" />
+        </view>
+        <view class="participant-info">
+          <text class="participant-name">{{item.nickname}}</text>
+          <text class="subtext">{{item.division || '未填写组别'}}</text>
+        </view>
+        <text class="sheet-arrow">›</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="bottom-action-bar" wx:if="{{event}}">
+    <button class="ghost-btn action-btn share-btn" open-type="share">分享</button>
+    <button class="primary-btn action-btn signup-btn" bindtap="handleRegister" disabled="{{isFull}}">
+      {{isFull ? '报名已满' : '立即报名'}}
+    </button>
   </view>
 </view>

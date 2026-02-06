@@ -3,25 +3,41 @@ const XLSX = require('xlsx');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
+// Admin openids for permission check (should match utils/roles.js)
+const ADMIN_OPENIDS = [
+  'ozE5v3Two0JZBRbEMq22vgcgz-Es',
+  'ozE5v3eJi7NnBfMvw0Arc6Ye1iQo',
+];
+
 exports.main = async (event, context) => {
   const { eventId } = event || {};
   if (!eventId) {
-    throw new Error('eventId required');
+    return { success: false, error: 'eventId required' };
   }
 
   const db = cloud.database();
   const wxContext = cloud.getWXContext();
+  const openid = wxContext.OPENID;
 
-  const userRes = await db.collection('users').where({ _openid: wxContext.OPENID }).limit(1).get();
+  // Check permission: either from database role or hardcoded admin list
+  const userRes = await db.collection('users').where({ _openid: openid }).limit(1).get();
   const user = userRes.data && userRes.data.length ? userRes.data[0] : null;
-  if (!user || user.role !== 'admin') {
-    throw new Error('permission denied');
+  const isAdmin = (user && user.role === 'admin') || ADMIN_OPENIDS.includes(openid);
+
+  if (!isAdmin) {
+    return { success: false, error: 'permission denied' };
   }
 
-  const eventRes = await db.collection('events').doc(eventId).get();
-  const eventDoc = eventRes.data;
+  let eventDoc;
+  try {
+    const eventRes = await db.collection('events').doc(eventId).get();
+    eventDoc = eventRes.data;
+  } catch (err) {
+    return { success: false, error: 'event not found' };
+  }
+
   if (!eventDoc) {
-    throw new Error('event not found');
+    return { success: false, error: 'event not found' };
   }
 
   const participantsRes = await db
@@ -93,5 +109,5 @@ exports.main = async (event, context) => {
   const cloudPath = `exports/event_${eventId}_${Date.now()}.xlsx`;
   const uploadRes = await cloud.uploadFile({ cloudPath, fileContent: buffer });
 
-  return { fileID: uploadRes.fileID, count: participants.length };
+  return { success: true, fileID: uploadRes.fileID, count: participants.length };
 };

@@ -2,6 +2,7 @@
   "pages": [
     "pages/events/events",
     "pages/event-detail/event-detail",
+    "pages/event-album/event-album",
     "pages/event-signup/event-signup",
     "pages/admin-events/admin-events",
     "pages/profile/profile"
@@ -21,7 +22,7 @@
     "list": [
       {
         "pagePath": "pages/events/events",
-        "text": "赛事",
+        "text": "活动",
         "iconPath": "assets/tabbar/events.png",
         "selectedIconPath": "assets/tabbar/events-active.png"
       },
@@ -33,6 +34,16 @@
       }
     ]
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于选择活动集合地点"
+    }
+  },
+  "requiredPrivateInfos": [
+    "chooseLocation",
+    "getLocation"
+  ],
   "style": "v2",
+  "lazyCodeLoading": "requiredComponents",
   "sitemapLocation": "sitemap.json"
 }

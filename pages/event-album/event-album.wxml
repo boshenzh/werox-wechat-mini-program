@@ -1,0 +1,79 @@
+<view class="page">
+  <view class="card summary-card">
+    <view class="summary-head">
+      <view>
+        <text class="section-title">赛事相册</text>
+        <text class="subtext" wx:if="{{canView}}">共 {{totalPhotos}} 张照片，点击可预览，支持下载原图</text>
+        <text class="subtext" wx:else>仅参赛选手和管理员可查看并下载照片</text>
+        <text class="subtext warning-text" wx:if="{{backendUnavailable && canView}}">
+          上传服务暂不可用，当前可浏览与下载
+        </text>
+      </view>
+      <button class="primary-btn upload-btn" bindtap="chooseAndUpload" loading="{{uploading}}" wx:if="{{canUpload}}">
+        上传原图
+      </button>
+    </view>
+  </view>
+
+  <view class="card info-card" wx:if="{{canView && photos.length > 0}}">
+    <view class="photo-grid">
+      <view
+        class="photo-item"
+        wx:for="{{photos}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="handlePreview"
+      >
+        <image class="photo-image" src="{{item.thumbUrl || item.previewUrl}}" mode="aspectFill" />
+        <view class="photo-overlay">
+          <text class="photo-time">{{item.createdText || '已上传'}}</text>
+        </view>
+        <view class="photo-actions">
+          <button class="photo-action ghost-btn" data-id="{{item.id}}" catchtap="handleDownload">下载原图</button>
+          <button
+            class="photo-action delete-btn"
+            wx:if="{{item.can_delete}}"
+            data-id="{{item.id}}"
+            catchtap="handleDelete"
+          >删除</button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card info-card" wx:if="{{canView && photos.length === 0 && !loading}}">
+    <view class="empty-state-inline">
+      <view class="empty-icon">
+        <image src="/assets/icons/camera.png" mode="aspectFit" />
+      </view>
+      <view>
+        <text class="empty-tip-title">相册还没有照片</text>
+        <text class="subtext">{{canUpload ? '现在上传，所有参赛者都能看到' : '等待参赛者上传照片'}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card info-card" wx:if="{{!canView && !loading}}">
+    <view class="empty-state-inline">
+      <view class="empty-icon">
+        <image src="/assets/icons/users.png" mode="aspectFit" />
+      </view>
+      <view>
+        <text class="empty-tip-title">暂无查看权限</text>
+        <text class="subtext">只有该赛事参赛选手可查看与下载照片</text>
+      </view>
+    </view>
+  </view>
+
+  <button class="ghost-btn more-btn" bindtap="handleLoadMore" wx:if="{{canView && hasMore && !loading}}" loading="{{loadingMore}}">
+    加载更多
+  </button>
+
+  <view class="empty-state-box" wx:if="{{loading}}">
+    <view class="empty-state-icon">
+      <image src="/assets/icons/camera.png" mode="aspectFit" />
+    </view>
+    <text class="empty-state-title">加载中</text>
+    <text class="empty-state-desc">正在获取赛事照片，请稍候</text>
+  </view>
+</view>

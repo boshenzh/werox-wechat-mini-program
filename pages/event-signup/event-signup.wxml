@@ -1,45 +1,81 @@
 <view class="page">
-  <view class="card info-card" wx:if="{{event}}">
+  <!-- Event Info Card -->
+  <view class="card info-card event-info-card" wx:if="{{event}}">
     <text class="section-title">赛事报名</text>
     <text class="event-title">{{event.title}}</text>
     <text class="subtext">{{event.dateText}} · {{event.location}}</text>
     <view class="meta-row">
-      <text class="meta-chip">费用 {{event.price ? event.price + '元/人' : '免费'}}</text>
+      <text class="meta-chip">费用 {{event.priceOpen > 0 ? (event.priceOpen / 100) + '元/人' : '免费'}}</text>
       <text class="meta-chip">人数上限 {{event.maxParticipants || '不限'}}</text>
     </view>
   </view>
 
-  <view class="card info-card" wx:if="{{profile}}">
+  <!-- Profile Preview Card -->
+  <view class="card info-card profile-info-card" wx:if="{{profile}}">
     <text class="section-title">你的资料</text>
     <view class="profile-row">
-      <image class="profile-avatar" src="{{profile.avatarFileId}}" mode="aspectFill" wx:if="{{profile.avatarFileId}}" />
-      <view class="profile-avatar placeholder" wx:else>无</view>
+      <image class="profile-avatar" src="{{profile.avatar_file_id}}" mode="aspectFill" wx:if="{{profile.avatar_file_id}}" />
+      <view class="profile-avatar placeholder" wx:else>
+        <image src="/assets/icons/user-placeholder.png" mode="aspectFit" />
+      </view>
       <view class="profile-info">
         <text class="profile-name">{{profile.nickname || '未命名选手'}}</text>
-        <text class="subtext">{{profile.trainingFocus || '训练方向未填写'}}</text>
-        <text class="subtext">微信号：{{profile.wechatId || '未填写'}}</text>
+        <text class="subtext">{{profile.training_focus || '训练方向未填写'}}</text>
+        <text class="subtext">微信号：{{profile.wechat_id || '未填写'}}</text>
       </view>
     </view>
-    <text class="subtext">可在“我的”完善详细资料</text>
+    <text class="subtext">可在"我的"完善详细资料</text>
   </view>
 
+  <!-- Signup Form Card -->
   <view class="card form-card">
-    <text class="section-title">报名信息</text>
+    <view class="form-head">
+      <text class="section-title">报名信息</text>
+      <text class="subtext">完成以下内容后即可锁定名额</text>
+    </view>
+
     <view class="form-row">
-      <text class="form-label">报名组别</text>
-      <picker mode="selector" range="{{groupOptions}}" value="{{groupIndex}}" bindchange="handleGroupChange">
-        <view class="picker-field {{form.groupType ? '' : 'placeholder'}}">{{form.groupType || '请选择组别'}}</view>
+      <text class="form-label">报名组别 *</text>
+      <picker mode="selector" range="{{divisionOptions}}" value="{{divisionIndex}}" bindchange="handleDivisionChange">
+        <view class="picker-field {{form.division ? '' : 'picker-placeholder'}}">
+          {{form.division || '请选择组别'}}
+        </view>
       </picker>
     </view>
+
     <view class="form-row">
-      <text class="form-label">搭档姓名（可选）</text>
-      <input class="form-input" value="{{form.partnerName}}" placeholder="例如：张三" data-field="partnerName" bindinput="handleInput" />
+      <text class="form-label">队伍名称（双人/接力组填写）</text>
+      <input class="form-input" value="{{form.teamName}}" placeholder="例如：WeRox 战队" data-field="teamName" bindinput="handleInput" />
     </view>
+
     <view class="form-row">
       <text class="form-label">备注（可选）</text>
-      <textarea class="form-textarea" value="{{form.note}}" placeholder="伤病、时间偏好等" data-field="note" bindinput="handleInput" />
+      <textarea class="form-textarea" value="{{form.note}}" placeholder="伤病情况、时间偏好等" data-field="note" bindinput="handleInput" />
     </view>
-    <button class="primary-btn" loading="{{submitting}}" bindtap="handleSubmit" wx:if="{{!isSigned}}">确认报名</button>
-    <button class="ghost-btn" wx:else>已报名</button>
+
+    <view class="confirm-tip" wx:if="{{form.division}}">
+      <text class="subtext">当前选择：{{form.division}}</text>
+    </view>
+
+    <view class="action-row">
+      <button class="primary-btn submit-btn" loading="{{submitting}}" bindtap="handleSubmit" wx:if="{{!isSigned}}">
+        确认报名
+      </button>
+      <button class="ghost-btn signed-btn" wx:else disabled>已报名</button>
+    </view>
+  </view>
+
+  <!-- Loading State -->
+  <view class="loading-state" wx:if="{{loading}}">
+    <text class="subtext">加载中...</text>
+  </view>
+
+  <!-- No Event State -->
+  <view class="empty-state-box" wx:if="{{!loading && !event}}">
+    <view class="empty-state-icon">
+      <image src="/assets/icons/search.png" mode="aspectFit" />
+    </view>
+    <text class="empty-state-title">赛事不存在</text>
+    <text class="empty-state-desc">该赛事可能已下架或不存在</text>
   </view>
 </view>

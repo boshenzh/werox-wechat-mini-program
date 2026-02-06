@@ -1,0 +1,6 @@
+node_modules/
+miniprogram_npm/
+.claude/
+.mcp.json
+*.log
+.DS_Store
