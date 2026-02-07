@@ -132,7 +132,7 @@ router.get('/v1/events/:id', async (req, res) => {
 
     const [stations, participants] = await Promise.all([
       rdbSelect('event_stations', {
-        select: 'id,event_id,station_order,station_name,station_type,description',
+        select: 'id,event_id,station_order,station_name,target_type,target_value,target_unit,station_description',
         event_id: toEq(eventId),
         order: 'station_order.asc',
       }, authHeader).catch(() => []),

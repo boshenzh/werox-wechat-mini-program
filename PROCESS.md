@@ -1131,3 +1131,32 @@ await db.from('table_name').delete().eq('id', id);
 | `pages/event-album/event-album.wxss` | 新增骨架屏样式 |
 | `pages/admin-events/admin-events.wxss` | 移除 status 文字色重复 |
 | `pages/profile/profile.wxss` | 编辑操作区 safe-area 修复 |
+
+---
+
+## Backend Error 修复（2026-02-07）
+
+### 问题
+
+- 多页面出现 "赛事不存在"、"角色更新失败" 等后端报错。
+- Events 列表页和 Profile 页因 BFF 身份解析失败时未回退本地通道导致白屏/加载失败。
+
+### 根因分析
+
+1. **DB ENUM 缺失 `coach`**：`users.role` 列 ENUM 仅有 `('runner','organizer','admin')`，缺少 `'coach'`。BFF 校验通过但 DB 写入失败。
+2. **`isBackendUnavailableError()` 不识别身份类错误**：BFF 返回 `IDENTITY_RESOLVE_FAILED`（401）、`MINI_IDENTITY_FAILED` 等错误码不在前端 fallback 模式列表中，导致页面直接报错而非回退本地 DB。
+3. **`event_participants` 安全规则过严**：仅 `me: rw`（无 `all: r`），本地 fallback 查询参赛人数/头像时只能看到自己的记录，导致数据不完整。
+
+### 修复
+
+1. **DB ENUM 修复**：`ALTER TABLE users MODIFY COLUMN role ENUM('runner','coach','organizer','admin') DEFAULT 'runner'` — 已执行成功。
+2. **前端 fallback 扩展**（`utils/api.js`）：
+   - `BACKEND_UNAVAILABLE_PATTERNS` 新增 5 个错误码：`IDENTITY_RESOLVE_FAILED`、`MINI_IDENTITY_FAILED`、`UNAUTHORIZED`、`ME_QUERY_FAILED`、`ME_ROLE_FAILED`。
+   - `isBackendUnavailableError()` 新增 HTTP 401/503 状态码检测。
+3. **安全规则修复**：`event_participants` 从 `me: rw` 改为 `READONLY`（`all: r, me: rw`）— 已通过 MCP 执行。
+
+### 验证
+
+- `SHOW COLUMNS FROM users WHERE Field = 'role'` → 确认 ENUM 含 `'coach'`
+- `readSecurityRule(event_participants)` → 确认含 `all: r`
+- 角色修改重试应不再报 `角色更新失败`

@@ -16,6 +16,13 @@ const BACKEND_UNAVAILABLE_PATTERNS = [
   'SERVICE_VERSION_NOT_FOUND',
   'SERVICE_NOT_READY',
   'SERVICE_LB_STATUS_ABNORMAL',
+  'IDENTITY_RESOLVE_FAILED',
+  'MINI_IDENTITY_FAILED',
+  'UNAUTHORIZED',
+  'ME_QUERY_FAILED',
+  'ME_ROLE_FAILED',
+  'EVENTS_QUERY_FAILED',
+  'EVENT_DETAIL_FAILED',
 ];
 
 function stringifyError(err) {
@@ -45,6 +52,11 @@ function isBackendUnavailableError(err) {
     if (detail.toLowerCase().includes('missing') && detail.toLowerCase().includes('tcb_api_key')) return true;
     if (code === 'IDENTITY_RESOLVE_FAILED' && detail.includes('missing_tcb_api_key')) return true;
   }
+  // Treat HTTP 401 (identity failure) and 503 (service unavailable) as backend-down
+  // so that core pages fall back to local DB queries instead of hard-failing.
+  const statusCode = Number(err && err.statusCode ? err.statusCode : 0);
+  if (statusCode === 401 || statusCode === 503) return true;
+
   const text = `${err && err.message ? err.message : ''} ${stringifyError(err && err.payload ? err.payload : err)}`;
   return BACKEND_UNAVAILABLE_PATTERNS.some((item) => text.includes(item));
 }

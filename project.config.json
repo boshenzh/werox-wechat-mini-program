@@ -2,7 +2,7 @@
   "setting": {
     "es6": true,
     "postcss": true,
-    "minified": false,
+    "minified": true,
     "uglifyFileName": false,
     "enhance": true,
     "packNpmManually": false,
@@ -13,7 +13,7 @@
       "outputPath": ""
     },
     "useCompilerPlugins": false,
-    "minifyWXML": false
+    "minifyWXML": true
   },
   "compileType": "miniprogram",
   "miniprogramRoot": "",
@@ -24,14 +24,18 @@
       { "type": "folder", "value": "node_modules" },
       { "type": "folder", "value": "cloudrun" },
       { "type": "folder", "value": "scripts" },
+      { "type": "folder", "value": "cloudfunctions" },
+      { "type": "folder", "value": ".git" },
+      { "type": "folder", "value": ".claude" },
+      { "type": "folder", "value": "miniprogram_npm/core-js-pure" },
+      { "type": "folder", "value": "miniprogram_npm/web-streams-polyfill" },
+      { "type": "suffix", "value": ".map" },
+      { "type": "suffix", "value": ".md" },
+      { "type": "suffix", "value": ".jsonl" },
       { "type": "file", "value": "prefill_users.json" },
-      { "type": "file", "value": "prefill_users.jsonl" },
-      { "type": "file", "value": "prefill_users_clean.jsonl" },
-      { "type": "file", "value": "PROCESS.md" },
-      { "type": "file", "value": "PLAN.md" },
-      { "type": "file", "value": "AGENTS.md" },
-      { "type": "file", "value": "CLAUDE.md" },
-      { "type": "file", "value": ".mcp.json" }
+      { "type": "file", "value": ".mcp.json" },
+      { "type": "file", "value": ".gitignore" },
+      { "type": "file", "value": "package-lock.json" }
     ],
     "include": []
   },
