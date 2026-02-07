@@ -2,7 +2,8 @@ Use english to communicate.
 you are creating a miniprogram in wechat.think systematically. After finishing each coding session or when you think there is critical information need to be noted (infrastructure spec, backend design spec, design spec, etc ), add that to the AGENTS.md.
 
 this is a chinese mini prgram, always use easy to understand chinese in UI. utilize skills for cloudbase and wechat mini program development. Use their best practice. there is also a mcp for search development knowledge base. 
-
+This is a WeChat Mini Program project using CloudBase (TCB) for backend. Key technologies: WXML templates (not JSX — avoid inline expressions that cause compile errors), wxss for styles, JavaScript for logic, CloudBase security rules, and cloud functions. Collections and security rules must match exactly.
+For CloudBase database operations: always verify collection names match between code and cloud console, ensure security rules use the correct identifier field (_id vs openid), and test queries against actual data before assuming they work.
 
 app Purpose: HYROX 活动报名和管理，社交，找hyrox 搭子队友, 管理生理数据，活动照片分享平台，面向Hyrox运动爱好者.
 
@@ -199,6 +200,46 @@ DESIGN SPECIFICATION - WeRox Mini Program
 
 ---
 
+## Mini Program Analytics / User Insights（2026-02-06）
+
+### Option A: WeChat ecosystem analytics (recommended baseline)
+
+- “We分析 / WeData” data analysis platform:
+  - Web: `https://wedata.weixin.qq.com/`
+  - In WeChat app: search “We分析”
+- Useful when you want WeChat-native traffic dashboards without introducing extra SDKs.
+
+### Option B: WeChat Data Analysis OpenAPI (server-side pull)
+
+- Use WeChat datacube/openapi (e.g. `analysis.getVisitPage`, `analysis.getVisitDistribution`) to pull official visit/page/performance metrics into our own BI or admin dashboards.
+- Call from server (CloudRun BFF / cloud functions), not from the mini program.
+
+### Option C: Third-party event analytics SDK (product-level funnels)
+
+- Candidates with Mini Program SDKs: Sensors Analytics (神策), GrowingIO, Baidu Tongji (百度统计), TalkingData, ZhugeIO (诸葛io).
+- Use this when we need event-level funnels/cohorts/retention tied to product actions beyond PV/UV.
+
+### WeRox tracking baseline (event taxonomy draft)
+
+- Key funnel events:
+  - `event_view` (open event detail)
+  - `signup_start` (tap CTA)
+  - `signup_submit` (submit registration)
+  - `signup_success` (server confirms)
+  - `album_view` / `album_upload_start` / `album_upload_success`
+  - `album_download` / `album_delete`
+  - `profile_edit_start` / `profile_save_success`
+- Constraints:
+  - Do not collect sensitive personal data; keep event properties minimal.
+  - If we add a third-party SDK, keep bundle size impact in check and avoid blocking startup (deferred init if needed).
+
+### WeRox implementation notes
+
+- Wrapper: `utils/analytics.js`
+  - Uses `wx.reportEvent` when available, fallback to `wx.reportAnalytics`
+  - Can be disabled via `getApp().globalData.analyticsEnabled = false` (default enabled)
+
+
 ## Profile 标签与编辑体验规范（2026-02-06）
 
 - 个人页编辑态标签改为**预设单选**，不再使用自由文本输入。
@@ -268,6 +309,18 @@ DESIGN SPECIFICATION - WeRox Mini Program
 
 ---
 
+## Admin 赛事创建与导出规范（2026-02-06）
+
+- 赛事创建页（`pages/admin-events/admin-events`）新建默认值：
+  - `start_date`、`end_date` 默认预填为当天（YYYY-MM-DD）。
+- 底部操作按钮（发布/取消）为 sticky：
+  - 必须给表单预留 `padding-bottom`，避免遮挡最后一段内容。
+  - `bottom` 需考虑 `safe-area-inset-bottom`。
+- 导出参赛名单（CSV）在部分平台无法预览：
+  - 若 `wx.openDocument` 返回 `filetype not supported`，前端改为复制 CSV 到剪贴板作为兜底。
+
+---
+
 ## 赛事相册功能规范（2026-02-06）
 
 ### 功能目标
@@ -315,3 +368,91 @@ DESIGN SPECIFICATION - WeRox Mini Program
   - 相册上传与删除禁止本地写入 fallback（避免权限拒绝和越权风险）；
   - 前端应将 `can_upload` 视为 `false` 并提示“上传服务暂不可用”。
 
+---
+
+## CloudRun 构建与发布注意事项（2026-02-06）
+
+- `cloudrun/werox-bff/Dockerfile` 若使用 `npm ci`，必须提交 `package-lock.json`；否则云端构建会 `build_failed`，导致无在线版本，小程序 `callContainer` 会报 `SERVICE_VERSION_NOT_FOUND`。
+- 当前选择策略：`npm install --omit=dev`（避免缺少 lockfile 导致的构建失败）；如未来引入更多依赖或需要可复现构建，建议补齐 lockfile 并恢复 `npm ci`。
+- `TCB_API_KEY` 必须只放在 CloudRun 环境变量中，禁止写入小程序端与仓库；泄露后需立即作废并重建。
+
+## BFF 环境变量最小集（2026-02-06）
+
+- `TCB_ENV_ID`：必填
+- `TCB_API_KEY`：必填（缺失时 BFF 无法访问 MySQL REST / Storage OpenAPI，前端将回退本地只读通道）
+- `TCB_AUTH_PROVIDER_ID`：默认 `wechat`
+
+## 相册 UI 约束补充（2026-02-06）
+
+- 相册列表使用两列瀑布流呈现（避免固定高度裁切导致观感不一致）。
+- 点击照片进入自定义预览层（swiper），预览层内提供“下载原图”主按钮：
+  - 原因：系统 `wx.previewImage` 无法放置自定义 CTA 按钮，只能依赖长按菜单；本项目要求明确“下载原图”入口。
+
+## BFF 公开接口约束（2026-02-06）
+
+- `GET /v1/events`、`GET /v1/events/:id` 必须保持“无需身份”可访问（用于赛事浏览）。
+- 身份必需的接口仅限：
+  - `/v1/me/*`
+  - `/v1/events/:id/registration/me`
+  - `/v1/events/:id/registrations`
+  - `/v1/events/:id/album/*`
+
+---
+
+## 赛事强度/耐力展示规范（2026-02-06）
+
+- 赛事列表卡片与赛事详情页默认不展示「强度/耐力」进度条（减少噪音，保持信息密度克制）。
+- 若未来需要展示难度，优先用一句话标签或徽章（例如「强度 7/10」），避免占用卡片纵向空间。
+
+---
+
+## 赛事报名状态提示规范（2026-02-06）
+
+- 赛事详情页底部 CTA 需要体现报名状态：
+  - `报名已满`：禁用按钮，阻止进入报名页。
+  - `已报名`：保持可点击（允许进入报名页查看），但文案必须提示已报名。
+  - `立即报名`：未报名且未满员。
+- 报名状态来源：`getMyRegistration(eventId)` 的 `is_signed`。
+
+---
+
+## 赛事相册入口规范（2026-02-06）
+
+- 赛事详情页仅提供「进入相册」入口，不提供「上传」快捷按钮。
+- 上传动作统一在 `pages/event-album/event-album` 中执行，便于集中处理权限、失败兜底与多图上传体验。
+
+---
+
+## 赛事详情内容展示规范（2026-02-06）
+
+- 相册瀑布流列表默认不叠加“上传时间”等 metadata 水印，保持画面干净。
+- 赛事海报展示位置：优先并入赛事详情页顶部赛事卡片内部，不单独占一整张卡片。
+- 组织者图文内容以 `detail_blocks` 为准，在赛事详情页渲染为「活动详情」模块：
+  - 支持多段：标题/正文/图片集（单模块可多图）。
+  - 存储结构（兼容旧数据）：
+    - 新增 `image_urls: string[]`（推荐）
+    - 保留 `image_url: string`（兼容，等价于 `image_urls[0]`）
+  - 渲染策略：
+    - 赛事详情页以 2 列网格展示图片集，点击可预览全图。
+
+---
+
+## Profile 参赛记录跳转兜底（2026-02-06）
+
+- `pages/profile/profile` 的「参赛记录」不再展示强度/耐力评分，避免与“个人训练评分”概念混淆。
+- 点击参赛记录必须可跳转到赛事详情页：
+  - 优先使用记录自带 `eventId/event_id`。
+  - 若缺失，则携带 `title/date/location` 打开 `pages/event-detail/event-detail`，由详情页二次解析并兜底跳转到活动页。
+
+---
+
+## Admin 发布权限口径（2026-02-06）
+
+- `pages/admin-events/admin-events` 发布与编辑权限统一为：`admin/coach/organizer`。
+
+---
+
+## Bugfix Notes（2026-02-06）
+
+- CSV 导出在部分平台（例如 Windows 开发者工具）`wx.openDocument` 可能不支持 `.csv/.txt`：`utils/export.js` 改为对 CSV/TXT 打开失败时直接回退“复制到剪贴板”，避免导出流程中断。
+- BFF 缺少 `TCB_API_KEY` 时，部分接口会以不同业务错误码包裹但 `detail` 仍包含 `missing_tcb_api_key`：`utils/api.js` 的后端不可用判定补齐对该 `detail` 信号的识别，确保核心页能按预期走本地只读 fallback。

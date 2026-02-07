@@ -610,6 +610,37 @@ await db.from('table_name').delete().eq('id', id);
   - 普通用户：仅「编辑主页」底部居中；
   - coach/admin：底部并列显示「编辑主页」「新增赛事」。
 
+---
+
+## 赛事创建默认日期与导出兜底（2026-02-06）
+
+### 需求
+
+- 赛事创建页：开始/结束日期默认预填为当天。
+- 底部「发布赛事/取消编辑」按钮不遮挡表单内容（需要更靠底，且内容可滚动到按钮上方）。
+- Windows 开发者工具导出 CSV 报错：`openDocument:fail filetype not supported`。
+
+### 修复
+
+1. 默认日期（`pages/admin-events/admin-events.js`）
+   - 新建赛事与 `resetForm()` 时：
+     - `start_date`、`end_date` 默认设置为 `今天(YYYY-MM-DD)`。
+
+2. 底部按钮不遮挡（`pages/admin-events/admin-events.wxss`）
+   - 增加页面底部 padding 与表单 `padding-bottom` 预留空间。
+   - `sticky-actions` 使用 `safe-area-inset-bottom`，按钮更贴近底部且不压内容。
+
+3. 导出 CSV 兜底（`utils/export.js` + `pages/admin-events/admin-events.js`）
+   - 仍生成 `.csv` 文件写入用户目录。
+   - 若 `openDocument` 不支持 CSV：
+     - 自动把 CSV 内容复制到剪贴板（含表头）。
+     - 前端提示「已复制 xxx 人CSV」而不是报导出失败。
+
+### 验证
+
+- `node --check pages/admin-events/admin-events.js` 通过。
+- `node --check utils/export.js` 通过。
+
 
 ---
 
@@ -685,3 +716,418 @@ await db.from('table_name').delete().eq('id', id);
   - 方案：上传/删除改为“仅后端可用”路径，不再本地写入 fallback；
   - `getEventAlbumSummary` 在后端不可用时返回 `can_upload=false` 与 `backend_unavailable=true`，前端自动隐藏上传入口并提示“当前可浏览与下载”。
 
+
+### CloudRun 部署执行记录（2026-02-06）
+
+- 已通过 MCP `manageCloudRun deploy` 成功部署服务：`werox-bff`
+- 部署路径：`/mnt/c/Users/80969/projects/werox/cloudrun/werox-bff`
+- 服务详情：
+  - 状态：`normal`
+  - 访问类型：`MINIAPP`
+  - 默认域名：`https://werox-bff-224371-8-1398111856.sh.run.tcloudbase.com`
+  - 资源：`Cpu=0.25`, `Mem=0.5`, `MinNum=0`, `MaxNum=3`
+- 当前已注入环境变量：
+  - `TCB_ENV_ID=werox-mini-program-8die4bd982524`
+  - `TCB_AUTH_PROVIDER_ID=wechat`
+- 待补充关键变量：`TCB_API_KEY`（缺失时 BFF 访问数据库会失败）。
+
+
+### CloudRun 版本未就绪容错补丁（2026-02-06）
+
+- 问题：小程序 `callContainer` 返回 `SERVICE_VERSION_NOT_FOUND` 时，事件列表等 API 未降级，页面报错。
+- 修复：`utils/api.js` 的后端不可用模式增加以下匹配：
+  - `SERVICE_VERSION_NOT_FOUND`
+  - `SERVICE_NOT_READY`
+  - `SERVICE_LB_STATUS_ABNORMAL`
+- 结果：当云托管版本未发布/未就绪时，页面自动回退本地数据通道，避免白屏与主流程中断。
+
+
+### CloudRun build_failed 修复与上线版本恢复（2026-02-06）
+
+- 根因：`cloudrun/werox-bff/Dockerfile` 使用 `npm ci --omit=dev`，但项目未提交 `package-lock.json`，导致云端构建直接失败，版本均为 `build_failed`，从而 `OnlineVersionInfos` 为空，小程序 `callContainer` 报 `SERVICE_VERSION_NOT_FOUND`。
+- 修复：将构建命令改为 `npm install --omit=dev`（见 `cloudrun/werox-bff/Dockerfile`），重新部署生成新版本。
+- 结果：`werox-bff-005` 构建成功并上线，`queryCloudRun.detail` 可看到：
+  - `TrafficType=FLOW`
+  - `OnlineVersionInfos=[{ VersionName: werox-bff-005, FlowRatio: 100 }]`
+
+注意：
+- 仍需配置 `TCB_API_KEY`（服务端 API Key）到 CloudRun 环境变量，否则 BFF 的数据库读写接口会失败。
+- 服务访问类型在控制台/接口层面出现 `OA/PUBLIC/MINIAPP` 同时开启的现象，后续需收敛到仅 `MINIAPP` 以降低暴露面。
+
+
+### BFF 缺少 TCB_API_KEY 的自动兜底（2026-02-06）
+
+- 现象：CloudRun 在线但未配置 `TCB_API_KEY` 时，BFF 会在身份/数据库链路失败，前端表现为“Load events failed: 身份解析失败”。
+- 修复：
+  - BFF 中间件对 `missing_tcb_api_key` 返回明确错误码 `MISSING_TCB_API_KEY`（见 `cloudrun/werox-bff/index.js`）。
+  - 小程序端将该错误视为“后端不可用”并自动回退本地 DB 通道（见 `utils/api.js`）。
+- 结果：即使云托管未配置 API Key，赛事列表等核心页不会白屏；但相册上传/删除仍要求后端可用。
+
+
+### 相册瀑布流与预览内下载（2026-02-06）
+
+- 目标：相册列表改为两列“瀑布流”视觉；“下载原图”按钮仅在点击照片进入预览后出现，减少列表干扰。
+- 实施：
+  - 列表渲染改为双列布局（`waterfallLeft`/`waterfallRight`），使用 `image mode="widthFix"` 实现自适应高度。
+  - 点击照片打开自定义全屏预览（`swiper`），底部操作条提供：
+    - `下载原图`
+    - `关闭`
+    - `删除`（仅当 `can_delete=true`）
+  - 列表图片开启 `lazy-load`，优先使用缩略图 URL。
+
+
+### 修复赛事列表被身份解析阻断（2026-02-06）
+
+- 问题：`GET /v1/events` 与 `GET /v1/events/:id` 实际不依赖用户身份，但此前挂了 `attachIdentity`，当身份解析链路异常时会直接导致首页“赛事列表”加载失败并报“身份解析失败”。
+- 修复：上述两个接口改为公开访问，不再强制身份解析（见 `cloudrun/werox-bff/index.js`）。
+- 兼容：若后端 `TCB_API_KEY` 配置错误，接口将返回 `503` + `TCB_API_KEY_INVALID`，小程序侧按“后端不可用”回退本地 DB 通道。
+
+---
+
+## 赛事强度/耐力条移除（2026-02-06）
+
+### 需求
+
+- 赛事列表卡片与赛事详情页不再展示「强度/耐力」进度条。
+
+### 修改
+
+- `pages/events/events.wxml`：移除卡片内 `强度/耐力` bar 区块。
+- `pages/event-detail/event-detail.wxml`：移除详情页 `强度/耐力` bar 区块。
+- `pages/events/events.wxss`、`pages/event-detail/event-detail.wxss`：删除对应 `.intensity-*` 样式，避免冗余。
+
+### 验证
+
+- `node --check pages/events/events.js` 通过。
+- `node --check pages/event-detail/event-detail.js` 通过。
+
+---
+
+## Bugfix: CSV 导出兜底 + 后端不可用识别（2026-02-06）
+
+### 问题
+
+- 管理端导出参赛名单时，部分平台 `wx.openDocument` 无法预览 `.csv/.txt`，导致导出流程报错。
+- CloudRun BFF 缺少 `TCB_API_KEY` 时，部分接口会返回不同业务错误码（但 `detail` 仍包含 `missing_tcb_api_key`），前端未识别为“后端不可用”，无法自动回退本地只读通道。
+
+### 修复
+
+- `utils/export.js`：CSV/TXT 打开失败时直接回退“复制 CSV 到剪贴板”（同时兼容不同平台的错误文案）。
+- `utils/api.js`：后端不可用判定增加对 `payload.detail` 中 `missing_tcb_api_key` 的识别，确保 fallback 生效。
+
+---
+
+## 赛事详情报名状态提示（2026-02-06）
+
+### 需求
+
+- 用户若已报名，赛事详情页底部按钮需显示「已报名」。
+
+### 实施
+
+- `pages/event-detail/event-detail.js`
+  - 新增 `isSigned` 状态。
+  - 加载赛事后调用 `getMyRegistration(eventId)` 获取 `is_signed` 并更新按钮状态。
+- `pages/event-detail/event-detail.wxml`
+  - 报名按钮文案：`报名已满 / 已报名 / 立即报名`。
+
+### 验证
+
+- `node --check pages/event-detail/event-detail.js` 通过。
+
+---
+
+## 赛事详情移除相册上传入口（2026-02-06）
+
+### 需求
+
+- 赛事详情页不展示「上传」按钮入口（上传统一在相册页进行）。
+
+### 修改
+
+- `pages/event-detail/event-detail.wxml`
+  - 移除「赛事相册」卡片右侧 `上传` 按钮。
+  - 空状态文案不再提示“点击上传第一张”。
+- `pages/event-detail/event-detail.js`
+  - 删除未使用的 `handleUpload`。
+- `pages/event-detail/event-detail.wxss`
+  - 删除 `upload-btn` / `btn-icon` 样式。
+
+### 验证
+
+- `node --check pages/event-detail/event-detail.js` 通过。
+
+---
+
+## 赛事详情 UI 整理（2026-02-06）
+
+### 修改
+
+- 相册列表移除图片时间水印（metadata overlay）：
+  - `pages/event-album/event-album.wxml` 删除 `wf-meta`。
+  - `pages/event-album/event-album.wxss` 删除对应样式。
+- 赛事详情页海报并入顶部赛事卡片：
+  - `pages/event-detail/event-detail.wxml` 在赛事介绍后以内嵌海报展示，移除独立海报卡片。
+- 赛事详情页渲染组织者图文模块：
+  - `pages/event-detail/event-detail.js` 使用 `normalizeDetailBlocks(event.detail_blocks)` 生成 `detailBlocks`，并解析云文件临时链接。
+  - `pages/event-detail/event-detail.wxml` 新增「活动详情」卡片渲染标题/图片/正文。
+
+### 验证
+
+- `node --check pages/event-detail/event-detail.js` 通过。
+- `node --check pages/event-album/event-album.js` 通过。
+
+---
+
+## 小程序数据分析埋点（微信内置 + We分析）（2026-02-06）
+
+### 目标
+
+- 仅使用微信生态的分析能力：
+  - 小程序后台「数据分析」
+  - We分析 / WeData
+- 关键路径可被量化：赛事浏览 -> 报名 -> 相册浏览/上传/下载 -> 个人资料编辑
+
+### 实施
+
+1. 新增轻量埋点封装
+   - `utils/analytics.js`
+   - 优先 `wx.reportEvent`，若不可用则 fallback 到 `wx.reportAnalytics`
+   - 参数做了长度与类型裁剪，且保证埋点失败不影响主流程
+
+2. 已埋点页面
+   - `pages/events/events.js`
+   - `pages/event-detail/event-detail.js`
+   - `pages/event-signup/event-signup.js`
+   - `pages/event-album/event-album.js`
+   - `pages/profile/profile.js`
+
+### 事件 ID（需要在微信后台「自定义分析」配置同名事件与字段）
+
+- `events_list_loaded`: `count`
+- `event_card_click`: `event_id`, `status`, `type`
+- `event_detail_open`: `event_id`
+- `event_view`: `event_id`, `status`, `type`
+- `signup_blocked_full`: `event_id`
+- `signup_start`: `event_id`, `is_signed`
+- `signup_page_open`: `event_id`
+- `signup_submit`: `event_id`, `division`
+- `signup_success`: `event_id`, `division`
+- `signup_fail`: `event_id`, `reason`
+- `album_open`: `event_id`
+- `album_page_open`: `event_id`
+- `album_view`: `event_id`, `total_photos`, `can_upload`
+- `album_upload_start`: `event_id`, `count`
+- `album_upload_result`: `event_id`, `success`, `failed`
+- `album_download`: `event_id`, `photo_id`
+- `album_delete`: `event_id`, `photo_id`
+- `open_location`: `event_id`
+- `profile_edit_start`: `is_self`
+- `profile_save_submit`: `has_nickname`, `has_avatar`, `has_tag`
+- `profile_save_success`
+- `profile_save_fail`: `reason`
+
+### 验证
+
+- `node --check`：
+  - `utils/analytics.js`
+  - `pages/events/events.js`
+  - `pages/event-detail/event-detail.js`
+  - `pages/event-signup/event-signup.js`
+  - `pages/event-album/event-album.js`
+- `pages/profile/profile.js`
+
+---
+
+## UI/UX 修复与增强（2026-02-06）
+
+- 我的页「参赛记录」移除强度/耐力展示，改为日期/场馆信息，并增加箭头提示可点击。
+- 参赛记录跳转赛事详情增强兜底：当记录缺少 `eventId` 时，赛事详情页可通过 `title/date/location` 解析并自动跳转到对应赛事。
+- 赛事「活动详情」图文模块支持多图上传与前台 2 列网格展示（`detail_blocks.image_urls[]`，兼容 `image_url`）。
+- 创建/编辑赛事权限口径调整：`admin/coach/organizer` 均可进入赛事工作台。
+
+---
+
+## 技术债清理 + 管理员角色分配功能（2026-02-07）
+
+### Phase 1: P0 安全与正确性修复
+
+1. **删除无用云函数**：移除 `adminEventOperation`、`exportEventParticipants`、`importEventsStub`、`importUsersStub`（含硬编码 openid、不兼容 MySQL 后端）。仅保留 `getOpenId`。
+2. **消除 BFF select('*')**：所有 hot path 改为显式列选择：
+   - `EVENT_LIST_COLUMNS`、`EVENT_DETAIL_COLUMNS`、`PARTICIPANT_DETAIL_COLUMNS`
+   - `USER_SELECT_COLUMNS`（身份解析 + 用户查询）
+   - `participantColumns`（参赛记录查询）
+3. **报名去重约束**：新增 SQL 迁移 `scripts/sql/20260207_registration_unique.sql`，在 `event_participants(event_id, user_openid)` 上添加 UNIQUE KEY；BFF 注册路由捕获 duplicate key 错误返回 `ALREADY_SIGNED`。
+4. **下载计数非原子操作**：添加 `KNOWN_LIMITATION` 注释说明当前 read-then-write 的竞态风险。
+5. **输入校验**：BFF 新增 `sanitizeRegistrationInput` 和 `sanitizeProfileInput`，对 `division`（64）、`team_name`（128）、`note`（512）、`nickname`（64）、`bio`（1000）、`wechat_id`（64）等字段做长度截断。
+
+### Phase 2: P1 架构修复
+
+1. **BFF 模块拆分**：将 1433 行 `index.js` 拆分为 10+ 模块：
+   - `lib/config.js` — 环境变量、常量、VALID_ROLES、LIMITS
+   - `lib/cloudbase.js` — CloudBase API 客户端（rdbSelect/Insert/Update 等）
+   - `lib/helpers.js` — 所有 helper 函数 + 新增 isAdminUser、truncateField、sanitize*
+   - `lib/identity.js` — 身份解析（resolveIdentityFromRequest、ensureLegacyUser 等）
+   - `middleware/auth.js` — attachIdentity 中间件
+   - `routes/auth.js` — 认证路由
+   - `routes/events.js` — 赛事路由（含分页、event_id IN-clause 优化）
+   - `routes/registration.js` — 报名路由（含去重 + 校验）
+   - `routes/album.js` — 相册 CRUD 路由
+   - `routes/me.js` — 个人资料路由 + 新增 `GET /v1/me/role` 轻量端点
+   - `routes/users.js` — 用户管理路由（管理员专属）
+   - `index.js` — 缩减至 ~108 行（Express 启动 + 中间件 + 路由挂载）
+
+2. **消除前后端逻辑重复**：创建 `utils/normalizers.js` 作为规范化函数的唯一来源：
+   - 导出：`parseTags`、`normalizeProfile`、`computeScores`、`normalizeAlbumPhoto`、`isPrivilegedRole`
+   - `utils/api.js` 改为从 `normalizers.js` 导入，移除内联重复定义
+
+3. **packOptions.ignore 修复**：`project.config.json` 新增忽略 `node_modules`、`cloudrun`、`scripts`、`prefill_users.*`、`PROCESS.md`、`PLAN.md`、`AGENTS.md`、`CLAUDE.md`、`.mcp.json`。
+
+### Phase 3: P2 设计异味修复
+
+1. **请求日志**：BFF 添加 `morgan('combined')` 中间件。
+2. **速率限制**：BFF 添加 `express-rate-limit`（报名 10/min、相册上传 20/min、资料更新 10/min）。
+3. **赛事列表性能**：participant 查询从全量拉取改为 `event_id IN (...)` 条件过滤，上限 500。
+4. **赛事列表分页**：`GET /v1/events` 支持 `limit`/`offset` 查询参数。
+5. **getUserRole 效率**：新增 `GET /v1/me/role` 轻量端点 + 客户端 `app.globalData._cachedRole` 缓存，避免每次拉取完整资料。
+6. **Profile tags 双发修复**：`pages/profile/profile.js` 移除 `JSON.stringify(tags)` 的冗余转换，tags 统一以数组发送。
+7. **package-lock.json**：生成 `cloudrun/werox-bff/package-lock.json`，Dockerfile 改用 `npm ci --omit=dev`。
+8. **CORS**：BFF 添加 `cors` 中间件。
+9. **本地 fallback 分页修复**：`localGetEventAlbum` 从 `.limit(offset+limit+1).slice(offset)` 改为 `.range(offset, offset+limit)`，避免大 offset 时拉取冗余数据。
+
+### Phase 4: 管理员角色分配功能
+
+1. **BFF 端点**：
+   - `GET /v1/users` — 管理员专属，支持分页 + 昵称模糊搜索
+   - `PATCH /v1/users/:id/role` — 管理员专属，验证角色值合法性
+2. **API 客户端**：`utils/api.js` 新增 `listUsers()`、`updateUserRole()`、`getMyRole()`。
+3. **管理用户页面**：新增 `pages/admin-users/admin-users`：
+   - 搜索栏 + 用户列表（头像、昵称、角色徽章）
+   - 点击角色触发 ActionSheet + Modal 确认
+   - 分页加载更多
+   - 仅 admin 角色可访问
+4. **入口集成**：
+   - `pages/profile/profile.wxml` 底部浮动操作区新增「管理用户」按钮（蓝色调，仅 admin 可见）
+   - `pages/profile/profile.js` 新增 `isAdmin` 状态和 `goAdminUsers()` 导航
+   - `app.json` 注册 `pages/admin-users/admin-users`
+
+### Phase 5: SQL 迁移
+
+- `scripts/sql/20260207_registration_unique.sql`：`ALTER TABLE event_participants ADD UNIQUE KEY uk_event_user_openid (event_id, user_openid)`
+- 部署顺序：执行 SQL 迁移 → 部署 BFF → 更新小程序代码
+
+### 新增/修改文件清单
+
+| 操作 | 路径 |
+|------|------|
+| DELETE | `cloudfunctions/adminEventOperation/` |
+| DELETE | `cloudfunctions/exportEventParticipants/` |
+| DELETE | `cloudfunctions/importEventsStub/` |
+| DELETE | `cloudfunctions/importUsersStub/` |
+| NEW | `utils/normalizers.js` |
+| NEW | `scripts/sql/20260207_registration_unique.sql` |
+| NEW | `cloudrun/werox-bff/lib/config.js` |
+| NEW | `cloudrun/werox-bff/lib/cloudbase.js` |
+| NEW | `cloudrun/werox-bff/lib/helpers.js` |
+| NEW | `cloudrun/werox-bff/lib/identity.js` |
+| NEW | `cloudrun/werox-bff/middleware/auth.js` |
+| NEW | `cloudrun/werox-bff/routes/auth.js` |
+| NEW | `cloudrun/werox-bff/routes/events.js` |
+| NEW | `cloudrun/werox-bff/routes/registration.js` |
+| NEW | `cloudrun/werox-bff/routes/album.js` |
+| NEW | `cloudrun/werox-bff/routes/me.js` |
+| NEW | `cloudrun/werox-bff/routes/users.js` |
+| NEW | `cloudrun/werox-bff/package-lock.json` |
+| NEW | `pages/admin-users/admin-users.js` |
+| NEW | `pages/admin-users/admin-users.wxml` |
+| NEW | `pages/admin-users/admin-users.wxss` |
+| NEW | `pages/admin-users/admin-users.json` |
+| REWRITE | `cloudrun/werox-bff/index.js` (1433 → ~108 行) |
+| EDIT | `cloudrun/werox-bff/package.json` (v0.2.0 + cors/morgan/rate-limit) |
+| EDIT | `cloudrun/werox-bff/Dockerfile` (npm ci) |
+| EDIT | `project.config.json` (packOptions.ignore) |
+| EDIT | `utils/api.js` (导入 normalizers + 新增 admin API + 分页修复) |
+| EDIT | `utils/user.js` (轻量 getUserRole + 缓存) |
+| EDIT | `pages/profile/profile.js` (tags 修复 + isAdmin + goAdminUsers) |
+| EDIT | `pages/profile/profile.wxml` (管理用户按钮) |
+| EDIT | `pages/profile/profile.wxss` (admin-users 按钮样式) |
+| EDIT | `app.json` (注册 admin-users 页面) |
+
+### 验证
+
+- `node --check` 全部通过：`utils/api.js`、`utils/normalizers.js`、`utils/user.js`、`pages/profile/profile.js`、`pages/admin-users/admin-users.js`、BFF 全部 10+ 模块
+- BFF 健康检查端点 `GET /health` 正常响应
+
+---
+
+## UI/UX 审计修复（2026-02-07）
+
+### 目标
+
+- 修复 7 页面的 UI/UX 问题：broken rendering、UX 逻辑错误、潜在 runtime crash、CSS 重复。
+
+### P0 — 修复 Bugs / Broken Behavior
+
+1. **封面图改用 `<image>` 组件**
+   - `pages/events/events.wxml`：用 `<image class="cover-img">` 替换 `background-image: url()` 内联样式。
+   - `pages/event-detail/event-detail.wxml`：同上。
+   - WXSS 中新增 `.cover-img` 绝对定位样式，`.cover-overlay` 添加 `z-index: 2`，确保渐变遮罩覆盖图片。
+   - 原因：小程序 `background-image` 对网络/云临时 URL 加载不可靠。
+
+2. **修复 highlights 空值 crash**
+   - `pages/event-detail/event-detail.js`：event 映射新增 `highlights: eventData.highlights || []`。
+   - `pages/event-detail/event-detail.wxml`：高亮卡片条件改为 `wx:if="{{event && event.highlights && event.highlights.length > 0}}"`。
+
+3. **报名表单加载保护**
+   - `pages/event-signup/event-signup.wxml`：表单卡片增加 `wx:if="{{event && !loading}}"` 防护。
+
+### P1 — 修复 UX 逻辑错误
+
+4. **相册入口按权限控制**
+   - `pages/event-detail/event-detail.wxml`：「进入相册」按钮添加 `wx:if="{{albumSummary.canView}}"`。
+
+5. **相册加载态改用骨架屏**
+   - `pages/event-album/event-album.wxml`：原 `empty-state-box` 加载态替换为 `.loading-skeleton` 骨架网格。
+   - `pages/event-album/event-album.wxss`：新增 `.loading-skeleton`、`.skeleton-grid`、`.skeleton-thumb` 样式。
+
+### P2 — 移除死代码
+
+6. **移除 events 列表死代码图标**
+   - `pages/events/events.wxml`：删除 `wx:if="{{false}}"` 的 `<image>` 元素。
+
+### P3 — CSS 去重与合并
+
+7. **状态徽章样式统一到 app.wxss**
+   - 新增 `.status-badge-draft` 至 `.status-badge-ended` 到 `app.wxss`。
+   - 移除 `pages/events/events.wxss`、`pages/event-detail/event-detail.wxss` 中的重复定义。
+   - 移除 `pages/admin-events/admin-events.wxss` 中 `.status-draft` 至 `.status-ended` 的重复定义。
+
+8. **空状态样式去重**
+   - 移除 `pages/event-detail/event-detail.wxss`、`pages/event-signup/event-signup.wxss` 中重复的 `.empty-state-box/.empty-state-icon/.empty-state-title/.empty-state-desc`（已存在于 app.wxss）。
+
+9. **表单样式统一到 app.wxss**
+   - 新增 `.form-row`、`.form-label`、`.form-input`、`.form-textarea`、`.picker-field`、`.picker-placeholder` 到 `app.wxss`。
+   - 移除 `pages/event-signup/event-signup.wxss` 中完全相同的定义。
+   - 保留 `pages/profile/profile.wxss` 和 `pages/admin-events/admin-events.wxss` 中有意覆盖的变体。
+
+### P4 — 细节打磨
+
+10. **Profile 编辑操作安全区**
+    - `pages/profile/profile.wxss`：`.edit-actions` 的 `bottom` 改为 `calc(12rpx + env(safe-area-inset-bottom))`，兼容刘海屏。
+
+### 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `app.wxss` | 新增 status-badge + form 共享样式 |
+| `pages/events/events.wxml` | 封面改 `<image>`，删除死代码图标 |
+| `pages/events/events.wxss` | 新增 `.cover-img`，移除 status-badge 重复 |
+| `pages/event-detail/event-detail.wxml` | 封面改 `<image>`，highlights 安全守卫，相册按钮权限 |
+| `pages/event-detail/event-detail.wxss` | 新增 `.cover-img`，移除 status-badge + empty-state 重复 |
+| `pages/event-detail/event-detail.js` | 事件映射新增 `highlights` |
+| `pages/event-signup/event-signup.wxml` | 表单卡片加 `wx:if` 防护 |
+| `pages/event-signup/event-signup.wxss` | 移除 empty-state + form 重复 |
+| `pages/event-album/event-album.wxml` | 加载态改骨架屏 |
+| `pages/event-album/event-album.wxss` | 新增骨架屏样式 |
+| `pages/admin-events/admin-events.wxss` | 移除 status 文字色重复 |
+| `pages/profile/profile.wxss` | 编辑操作区 safe-area 修复 |

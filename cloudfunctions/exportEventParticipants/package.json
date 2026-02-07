@@ -1,7 +1,0 @@
-{
-  "name": "exportEventParticipants",
-  "dependencies": {
-    "wx-server-sdk": "latest",
-    "xlsx": "^0.18.5"
-  }
-}

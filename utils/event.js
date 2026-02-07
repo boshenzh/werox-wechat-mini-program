@@ -137,18 +137,42 @@ function normalizeDetailBlocks(rawValue, posterUrl = '') {
   const parsed = safeParseJson(rawValue, []);
   if (Array.isArray(parsed)) {
     const list = parsed
-      .map((item) => ({
-        title: item && item.title ? String(item.title) : '',
-        content: item && item.content ? String(item.content) : '',
-        image_url: item && item.image_url ? String(item.image_url) : '',
-      }))
-      .filter((item) => item.title || item.content || item.image_url);
+      .map((item) => {
+        const title = item && item.title ? String(item.title) : '';
+        const content = item && item.content ? String(item.content) : '';
+        const imageListRaw = (
+          (item && Array.isArray(item.image_urls) && item.image_urls)
+          || (item && Array.isArray(item.images) && item.images)
+          || []
+        );
+        const imageUrls = imageListRaw
+          .map((val) => (val === null || val === undefined ? '' : String(val)))
+          .map((val) => val.trim())
+          .filter(Boolean);
+
+        const legacy = item && item.image_url ? String(item.image_url).trim() : '';
+        if (legacy && !imageUrls.includes(legacy)) imageUrls.unshift(legacy);
+
+        return {
+          title,
+          content,
+          image_urls: imageUrls,
+          // Keep legacy key for compatibility (first image).
+          image_url: imageUrls[0] || '',
+        };
+      })
+      .filter((item) => item.title || item.content || (item.image_urls && item.image_urls.length));
 
     if (list.length > 0) return list;
   }
 
   if (posterUrl) {
-    return [{ title: '赛事视觉', content: '', image_url: posterUrl }];
+    return [{
+      title: '赛事视觉',
+      content: '',
+      image_urls: [posterUrl],
+      image_url: posterUrl,
+    }];
   }
 
   return [];

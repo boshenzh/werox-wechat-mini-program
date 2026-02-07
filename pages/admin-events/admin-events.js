@@ -11,6 +11,8 @@ const {
 } = require('../../utils/event');
 const { exportEventParticipantsCsv } = require('../../utils/export');
 
+const TODAY_YMD = formatDateToYMD(new Date());
+
 const HYROX_DIVISIONS = [
   { value: 'Open男', label: 'Open男' },
   { value: 'Open女', label: 'Open女' },
@@ -87,7 +89,7 @@ function defaultDetailForm() {
   return {
     title: '',
     content: '',
-    image_url: '',
+    image_urls: [],
   };
 }
 
@@ -111,9 +113,9 @@ Page({
     form: {
       title: '',
       slug: '',
-      start_date: '',
+      start_date: TODAY_YMD,
       start_time: '',
-      end_date: '',
+      end_date: TODAY_YMD,
       end_time: '',
       location: '',
       latitude: null,
@@ -154,7 +156,7 @@ Page({
     try {
       const openid = await getCurrentOpenid();
       const role = await getUserRole(openid);
-      const isAllowed = role === 'admin' || role === 'organizer';
+      const isAllowed = role === 'admin' || role === 'organizer' || role === 'coach';
 
       this.setData({ openid, role, isAllowed });
 
@@ -423,9 +425,9 @@ Page({
       form: {
         title: '',
         slug: '',
-        start_date: '',
+        start_date: TODAY_YMD,
         start_time: '',
-        end_date: '',
+        end_date: TODAY_YMD,
         end_time: '',
         location: '',
         latitude: null,
@@ -504,7 +506,14 @@ Page({
         eventTitle: event ? event.title : '',
       });
       wx.hideLoading();
-      wx.showToast({ title: `已导出 ${result.count} 人`, icon: 'success' });
+      const mode = result && result.mode ? result.mode : 'unknown';
+      if (mode === 'open_document') {
+        wx.showToast({ title: `已导出 ${result.count} 人`, icon: 'success' });
+      } else if (mode === 'clipboard') {
+        wx.showToast({ title: `已复制 ${result.count} 人CSV`, icon: 'success' });
+      } else {
+        wx.showToast({ title: `已导出 ${result.count} 人`, icon: 'success' });
+      }
     } catch (err) {
       wx.hideLoading();
       console.error('Export participants failed', err);
@@ -777,13 +786,16 @@ Page({
 
   addDetailBlock() {
     const form = this.data.detailForm;
+    const imageUrls = Array.isArray(form.image_urls) ? form.image_urls.filter(Boolean) : [];
     const block = {
       title: (form.title || '').trim(),
       content: (form.content || '').trim(),
-      image_url: form.image_url || '',
+      image_urls: imageUrls,
+      // Keep legacy field for compatibility (first image).
+      image_url: imageUrls[0] || '',
     };
 
-    if (!block.title && !block.content && !block.image_url) {
+    if (!block.title && !block.content && !(block.image_urls && block.image_urls.length)) {
       wx.showToast({ title: '请填写详情内容', icon: 'none' });
       return;
     }
@@ -822,8 +834,11 @@ Page({
     await this.chooseAndUploadImage('cover_url', 'form');
   },
 
-  async chooseDetailImage() {
-    await this.chooseAndUploadImage('image_url', 'detailForm');
+  async chooseDetailImages() {
+    await this.chooseAndUploadImagesToArray({
+      targetKey: 'detailForm.image_urls',
+      max: 9,
+    });
   },
 
   async chooseAndUploadImage(field, targetKey) {
@@ -860,5 +875,76 @@ Page({
       console.error('Image upload failed', err);
       wx.showToast({ title: '上传失败', icon: 'none' });
     }
+  },
+
+  async chooseAndUploadImagesToArray(options = {}) {
+    const { targetKey = '', max = 9 } = options;
+    if (!targetKey) return;
+
+    try {
+      const res = await wx.chooseMedia({
+        count: Math.max(1, Number(max) || 9),
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        sizeType: ['compressed'],
+      });
+      const files = (res && res.tempFiles) || [];
+      if (!files.length) return;
+
+      const current = this.data.detailForm && Array.isArray(this.data.detailForm.image_urls)
+        ? this.data.detailForm.image_urls
+        : [];
+      const remain = Math.max(0, (Number(max) || 9) - current.length);
+      if (remain <= 0) {
+        wx.showToast({ title: `最多 ${max} 张图片`, icon: 'none' });
+        return;
+      }
+
+      const slice = files.slice(0, remain);
+      const uploaded = [];
+
+      wx.showLoading({ title: `上传中 1/${slice.length}` });
+      for (let i = 0; i < slice.length; i += 1) {
+        const tempFilePath = slice[i] && slice[i].tempFilePath;
+        if (!tempFilePath) continue;
+
+        wx.showLoading({ title: `上传中 ${i + 1}/${slice.length}` });
+        const ext = tempFilePath.split('.').pop() || 'jpg';
+        const cloudPath = `events/detail/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+        const uploadRes = await wx.cloud.uploadFile({
+          cloudPath,
+          filePath: tempFilePath,
+        });
+        if (uploadRes && uploadRes.fileID) {
+          uploaded.push(uploadRes.fileID);
+        }
+      }
+
+      wx.hideLoading();
+
+      if (!uploaded.length) {
+        wx.showToast({ title: '上传失败', icon: 'none' });
+        return;
+      }
+
+      const next = [...current, ...uploaded].slice(0, Number(max) || 9);
+      this.setData({ [targetKey]: next });
+      wx.showToast({ title: `已添加 ${uploaded.length} 张`, icon: 'success' });
+    } catch (err) {
+      wx.hideLoading();
+      console.error('Multi image upload failed', err);
+      if (err && err.errMsg && String(err.errMsg).includes('cancel')) return;
+      wx.showToast({ title: '上传失败', icon: 'none' });
+    }
+  },
+
+  removeDetailFormImage(e) {
+    const index = Number(e.currentTarget.dataset.index);
+    const current = this.data.detailForm && Array.isArray(this.data.detailForm.image_urls)
+      ? this.data.detailForm.image_urls
+      : [];
+    if (!Number.isFinite(index) || index < 0 || index >= current.length) return;
+    const next = current.filter((_, i) => i !== index);
+    this.setData({ 'detailForm.image_urls': next });
   },
 });

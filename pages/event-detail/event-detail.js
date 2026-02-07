@@ -1,5 +1,7 @@
 const app = getApp();
-const { getEventDetail, getEventAlbumSummary } = require('../../utils/api');
+const { getEventDetail, getEventAlbumSummary, getMyRegistration, listEvents } = require('../../utils/api');
+const { normalizeDetailBlocks } = require('../../utils/event');
+const { track } = require('../../utils/analytics');
 
 const MAX_PREVIEW_PARTICIPANTS = 5;
 
@@ -9,14 +11,128 @@ Page({
     stations: [],
     participants: [],
     participantPreview: [],
+    detailBlocks: [],
     showParticipantSheet: false,
     loading: true,
     isFull: false,
+    isSigned: false,
     albumSummary: {
       totalPhotos: 0,
       canView: false,
       canUpload: false,
     },
+  },
+
+  normalizeLookupText(value) {
+    return String(value || '').trim().toLowerCase();
+  },
+
+  buildEventLookup(events = []) {
+    const byExact = new Map();
+    const byTitleDate = new Map();
+    const byTitle = new Map();
+
+    (events || []).forEach((event) => {
+      const id = event && event.id;
+      if (!id) return;
+      const title = this.normalizeLookupText(event.title);
+      if (!title) return;
+      const date = this.normalizeLookupText(event.event_date);
+      const location = this.normalizeLookupText(event.location);
+
+      byExact.set(`${title}|${date}|${location}`, String(id));
+      if (!byTitleDate.has(`${title}|${date}`)) {
+        byTitleDate.set(`${title}|${date}`, String(id));
+      }
+      if (!byTitle.has(title)) {
+        byTitle.set(title, String(id));
+      }
+    });
+
+    return { byExact, byTitleDate, byTitle };
+  },
+
+  resolveEventIdByMeta(meta, lookup) {
+    const title = this.normalizeLookupText(meta && meta.title);
+    const date = this.normalizeLookupText(meta && meta.date);
+    const location = this.normalizeLookupText(meta && meta.location);
+    if (!title || !lookup) return '';
+
+    return lookup.byExact.get(`${title}|${date}|${location}`)
+      || lookup.byTitleDate.get(`${title}|${date}`)
+      || lookup.byTitle.get(title)
+      || '';
+  },
+
+  resolveEventIdFuzzy(meta, events = []) {
+    const queryTitle = this.normalizeLookupText(meta && meta.title);
+    const queryDate = this.normalizeLookupText(meta && meta.date);
+    if (!queryTitle) return '';
+
+    const candidates = (events || []).filter((event) => {
+      const title = this.normalizeLookupText(event && event.title);
+      if (!title) return false;
+      return title.includes(queryTitle) || queryTitle.includes(title);
+    });
+
+    if (candidates.length === 0) return '';
+    if (candidates.length === 1) return String(candidates[0].id);
+
+    if (queryDate) {
+      const exactDate = candidates.find((event) => this.normalizeLookupText(event.event_date) === queryDate);
+      if (exactDate) return String(exactDate.id);
+    }
+
+    return String(candidates[0].id);
+  },
+
+  async loadEventByMeta(meta) {
+    const title = String((meta && meta.title) || '').trim();
+    const date = String((meta && meta.date) || '').trim();
+    const location = String((meta && meta.location) || '').trim();
+    if (!title) {
+      this.setData({ loading: false, event: null });
+      wx.showToast({ title: '该记录缺少赛事信息', icon: 'none' });
+      return;
+    }
+
+    this.setData({ loading: true });
+    try {
+      const response = await listEvents();
+      const events = response && Array.isArray(response.events) ? response.events : [];
+      const lookup = this.buildEventLookup(events);
+      const resolved = this.resolveEventIdByMeta({ title, date, location }, lookup)
+        || this.resolveEventIdFuzzy({ title, date, location }, events);
+
+      if (resolved) {
+        this.loadEvent(Number(resolved));
+        return;
+      }
+    } catch (err) {
+      console.warn('Resolve event meta failed', err);
+    }
+
+    this.setData({
+      event: null,
+      stations: [],
+      participants: [],
+      participantPreview: [],
+      showParticipantSheet: false,
+      loading: false,
+      isFull: false,
+      isSigned: false,
+      detailBlocks: [],
+      albumSummary: {
+        totalPhotos: 0,
+        canView: false,
+        canUpload: false,
+      },
+    });
+
+    wx.showToast({ title: '未找到对应赛事', icon: 'none' });
+    setTimeout(() => {
+      wx.switchTab({ url: '/pages/events/events' });
+    }, 650);
   },
 
   isCloudFileId(value) {
@@ -46,7 +162,18 @@ Page({
 
   onLoad(query) {
     const eventId = query && query.id ? Number(query.id) : null;
-    this.loadEvent(eventId);
+    const title = query && query.title ? String(query.title) : '';
+    const date = query && query.date ? String(query.date) : '';
+    const location = query && query.location ? String(query.location) : '';
+
+    track('event_detail_open', { event_id: Number.isFinite(eventId) ? String(eventId) : '' });
+
+    if (Number.isFinite(eventId) && eventId) {
+      this.loadEvent(eventId);
+      return;
+    }
+
+    this.loadEventByMeta({ title, date, location });
   },
 
   mapStations(stations = []) {
@@ -131,7 +258,13 @@ Page({
 
       const rawCoverUrl = eventData.cover_url || eventData.coverUrl || '';
       const rawPosterUrl = eventData.poster_url || eventData.posterUrl || '';
-      const mediaUrlMap = await this.resolveMediaUrls([rawCoverUrl, rawPosterUrl]);
+      const detailBlocksRaw = normalizeDetailBlocks(eventData.detail_blocks || '', '');
+      const detailImageIds = (detailBlocksRaw || []).reduce((list, block) => {
+        const images = block && Array.isArray(block.image_urls) ? block.image_urls : [];
+        images.filter(Boolean).forEach((img) => list.push(img));
+        return list;
+      }, []);
+      const mediaUrlMap = await this.resolveMediaUrls([rawCoverUrl, rawPosterUrl, ...detailImageIds]);
 
       const event = {
         id: eventData.id || eventData._id || '',
@@ -162,7 +295,18 @@ Page({
         baseStrength: eventData.base_strength || 0,
         baseEndurance: eventData.base_endurance || 0,
         price: eventData.price_open ? eventData.price_open / 100 : 0,
+        highlights: eventData.highlights || [],
       };
+
+      const detailBlocks = (detailBlocksRaw || []).map((block) => {
+        const images = block && Array.isArray(block.image_urls) ? block.image_urls : [];
+        const resolvedImages = images.map((img) => mediaUrlMap[img] || img).filter(Boolean);
+        return {
+          ...block,
+          image_urls: resolvedImages,
+          image_url: resolvedImages[0] || '',
+        };
+      });
 
       const mappedStations = this.mapStations(stations);
       const participantInfo = await this.mapParticipants(participants, event.maxParticipants);
@@ -173,8 +317,20 @@ Page({
         participants: participantInfo.list,
         participantPreview: participantInfo.preview,
         isFull: participantInfo.isFull,
+        isSigned: false,
+        detailBlocks,
       });
-      await this.loadAlbumSummary(event.id);
+
+      track('event_view', {
+        event_id: String(event.id || ''),
+        status: event.status || '',
+        type: event.eventType || '',
+      });
+
+      await Promise.all([
+        this.loadAlbumSummary(event.id),
+        this.loadMyRegistration(event.id),
+      ]);
     } catch (err) {
       console.error('Load event failed', err);
       wx.showToast({ title: '赛事加载失败', icon: 'none' });
@@ -186,6 +342,7 @@ Page({
         showParticipantSheet: false,
         loading: false,
         isFull: false,
+        isSigned: false,
         albumSummary: {
           totalPhotos: 0,
           canView: false,
@@ -194,6 +351,19 @@ Page({
       });
     } finally {
       this.setData({ loading: false });
+    }
+  },
+
+  async loadMyRegistration(eventId) {
+    const safeEventId = Number(eventId);
+    if (!Number.isFinite(safeEventId)) return;
+    try {
+      const result = await getMyRegistration(safeEventId);
+      this.setData({ isSigned: !!(result && result.is_signed) });
+    } catch (err) {
+      // Treat errors as unsigned to avoid blocking normal signup flow.
+      console.warn('Load my registration failed', err);
+      this.setData({ isSigned: false });
     }
   },
 
@@ -274,6 +444,19 @@ Page({
 
   noop() {},
 
+  previewDetailImage(e) {
+    const blockIndex = Number(e.currentTarget.dataset.blockIndex);
+    const imgIndex = Number(e.currentTarget.dataset.imgIndex);
+    const blocks = Array.isArray(this.data.detailBlocks) ? this.data.detailBlocks : [];
+    if (!Number.isFinite(blockIndex) || blockIndex < 0 || blockIndex >= blocks.length) return;
+    const block = blocks[blockIndex];
+    const urls = block && Array.isArray(block.image_urls) ? block.image_urls.filter(Boolean) : [];
+    if (!urls.length) return;
+
+    const current = (Number.isFinite(imgIndex) && urls[imgIndex]) ? urls[imgIndex] : urls[0];
+    wx.previewImage({ current, urls });
+  },
+
   goRunnerProfile(e) {
     const openid = e.currentTarget && e.currentTarget.dataset
       ? e.currentTarget.dataset.openid
@@ -289,19 +472,16 @@ Page({
   handleRegister() {
     if (!this.data.event || !this.data.event.id) return;
     if (this.data.isFull) {
+      track('signup_blocked_full', { event_id: String(this.data.event.id) });
       wx.showToast({ title: '报名已满', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: `/pages/event-signup/event-signup?id=${this.data.event.id}` });
-  },
 
-  handleUpload() {
-    const event = this.data.event;
-    if (!event || !event.id) {
-      wx.showToast({ title: '赛事信息不可用', icon: 'none' });
-      return;
-    }
-    wx.navigateTo({ url: `/pages/event-album/event-album?id=${event.id}` });
+    track('signup_start', {
+      event_id: String(this.data.event.id),
+      is_signed: this.data.isSigned ? 1 : 0,
+    });
+    wx.navigateTo({ url: `/pages/event-signup/event-signup?id=${this.data.event.id}` });
   },
 
   openAlbum() {
@@ -310,6 +490,7 @@ Page({
       wx.showToast({ title: '赛事信息不可用', icon: 'none' });
       return;
     }
+    track('album_open', { event_id: String(event.id) });
     wx.navigateTo({ url: `/pages/event-album/event-album?id=${event.id}` });
   },
 
@@ -319,6 +500,7 @@ Page({
       wx.showToast({ title: '位置信息不可用', icon: 'none' });
       return;
     }
+    track('open_location', { event_id: String(event.id || '') });
     wx.openLocation({
       latitude: Number(event.latitude),
       longitude: Number(event.longitude),

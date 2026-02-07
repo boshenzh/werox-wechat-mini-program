@@ -1,4 +1,5 @@
 const { getMe, getEventDetail, getMyRegistration, createRegistration } = require('../../utils/api');
+const { track } = require('../../utils/analytics');
 
 Page({
   data: {
@@ -20,6 +21,7 @@ Page({
   onLoad(query) {
     const eventId = query && query.id ? Number(query.id) : null;
     this.setData({ eventId });
+    track('signup_page_open', { event_id: Number.isFinite(eventId) ? String(eventId) : '' });
     this.initPage();
   },
 
@@ -124,6 +126,10 @@ Page({
     }
 
     this.setData({ submitting: true });
+    track('signup_submit', {
+      event_id: String(this.data.eventId),
+      division: this.data.form.division || '',
+    });
 
     try {
       await createRegistration(this.data.eventId, {
@@ -134,9 +140,17 @@ Page({
 
       wx.showToast({ title: '报名成功', icon: 'success' });
       this.setData({ isSigned: true });
+      track('signup_success', {
+        event_id: String(this.data.eventId),
+        division: this.data.form.division || '',
+      });
       setTimeout(() => wx.navigateBack(), 600);
     } catch (err) {
       console.error('Signup failed', err);
+      track('signup_fail', {
+        event_id: String(this.data.eventId),
+        reason: (err && err.message) || '',
+      });
       wx.showToast({ title: err.message || '报名失败', icon: 'none' });
     } finally {
       this.setData({ submitting: false });

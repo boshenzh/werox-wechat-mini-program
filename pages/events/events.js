@@ -1,5 +1,6 @@
 const app = getApp();
 const { listEvents } = require('../../utils/api');
+const { track } = require('../../utils/analytics');
 const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const CARD_AVATAR_LIMIT = 3;
 const EVENT_REFRESH_INTERVAL_MS = 30 * 1000;
@@ -216,6 +217,10 @@ Page({
         events,
         lastLoadedAt: Date.now(),
       });
+
+      track('events_list_loaded', {
+        count: Array.isArray(events) ? events.length : 0,
+      });
     } catch (err) {
       console.error('Load events failed', err);
       this.setData({ events: [] });
@@ -244,6 +249,13 @@ Page({
     if (event) {
       app.globalData.currentEvent = event;
     }
+
+    track('event_card_click', {
+      event_id: String(eventId),
+      status: (event && event.status) || '',
+      type: (event && event.eventType) || '',
+    });
+
     wx.navigateTo({ url: `/pages/event-detail/event-detail?id=${eventId}` });
   },
 });

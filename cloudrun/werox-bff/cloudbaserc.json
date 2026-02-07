@@ -1,0 +1,6 @@
+{
+  "envId": "werox-mini-program-8die4bd982524",
+  "cloudrun": {
+    "name": "werox-bff"
+  }
+}

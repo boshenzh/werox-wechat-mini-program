@@ -1,6 +1,0 @@
-{
-  "name": "adminEventOperation",
-  "dependencies": {
-    "wx-server-sdk": "latest"
-  }
-}

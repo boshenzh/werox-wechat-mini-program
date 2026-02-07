@@ -1,4 +1,11 @@
 const { callBackend } = require('./backend');
+const {
+  parseTags,
+  normalizeProfile,
+  computeScores,
+  normalizeAlbumPhoto,
+  isPrivilegedRole,
+} = require('./normalizers');
 
 const BACKEND_UNAVAILABLE_PATTERNS = [
   'INVALID_HOST',
@@ -6,6 +13,9 @@ const BACKEND_UNAVAILABLE_PATTERNS = [
   'SERVICE_NOT_FOUND',
   'SERVICE_ENDPOINT_NOT_FOUND',
   'SERVICE_FORBIDDEN',
+  'SERVICE_VERSION_NOT_FOUND',
+  'SERVICE_NOT_READY',
+  'SERVICE_LB_STATUS_ABNORMAL',
 ];
 
 function stringifyError(err) {
@@ -18,6 +28,23 @@ function stringifyError(err) {
 }
 
 function isBackendUnavailableError(err) {
+  // Treat certain backend misconfigurations as "unavailable" so core pages can
+  // fall back to the local DB path instead of hard-failing.
+  //
+  // Typical case: CloudRun is online, but missing required env vars (e.g.
+  // `TCB_API_KEY`) so every request fails with 401/5xx.
+  const payload = err && err.payload && typeof err.payload === 'object' ? err.payload : null;
+  if (payload) {
+    const code = String(payload.code || err.code || '');
+    const detail = String(payload.detail || '');
+    if (code === 'MISSING_TCB_API_KEY') return true;
+    if (code === 'TCB_API_KEY_INVALID') return true;
+    // When API key is missing, BFF may wrap it in different route-level error codes.
+    // Use `detail` as a stable signal.
+    if (detail.includes('missing_tcb_api_key')) return true;
+    if (detail.toLowerCase().includes('missing') && detail.toLowerCase().includes('tcb_api_key')) return true;
+    if (code === 'IDENTITY_RESOLVE_FAILED' && detail.includes('missing_tcb_api_key')) return true;
+  }
   const text = `${err && err.message ? err.message : ''} ${stringifyError(err && err.payload ? err.payload : err)}`;
   return BACKEND_UNAVAILABLE_PATTERNS.some((item) => text.includes(item));
 }
@@ -30,75 +57,6 @@ async function withFallback(remoteAction, localAction, actionName) {
     console.warn(`[api] ${actionName} fallback to local mode:`, err && err.message ? err.message : err);
     return localAction();
   }
-}
-
-function parseTags(rawTags) {
-  if (Array.isArray(rawTags)) return rawTags;
-  if (typeof rawTags === 'string') {
-    try {
-      const parsed = JSON.parse(rawTags);
-      if (Array.isArray(parsed)) return parsed;
-    } catch (err) {
-      return rawTags
-        .split(/,|，/)
-        .map((item) => item.trim())
-        .filter(Boolean);
-    }
-  }
-  return [];
-}
-
-function normalizeProfile(row) {
-  const safe = row || {};
-  return {
-    id: safe.id || null,
-    user_id: safe.user_id || null,
-    openid: safe.openid || '',
-    nickname: safe.nickname || '',
-    avatar_file_id: safe.avatar_file_id || '',
-    sex: safe.sex || '',
-    birth_year: safe.birth_year || null,
-    role: safe.role || 'runner',
-    hyrox_level: safe.hyrox_level || '',
-    best_hyrox_time: safe.best_hyrox_time || '',
-    races_completed: Number(safe.races_completed || 0),
-    preferred_division: safe.preferred_division || '',
-    training_focus: safe.training_focus || '',
-    weekly_training_hours: safe.weekly_training_hours || null,
-    seeking_partner: !!safe.seeking_partner,
-    preferred_partner_role: safe.preferred_partner_role || '',
-    partner_note: safe.partner_note || '',
-    mbti: safe.mbti || '',
-    tags: parseTags(safe.tags),
-    bio: safe.bio || '',
-    wechat_id: safe.wechat_id || '',
-    phone: safe.phone || '',
-    created_at: safe.created_at || null,
-    updated_at: safe.updated_at || null,
-  };
-}
-
-function computeScores(records) {
-  const list = records || [];
-  if (!list.length) {
-    return { strength: 0, endurance: 0 };
-  }
-  let strengthSum = 0;
-  let enduranceSum = 0;
-  list.forEach((row) => {
-    const baseStrength = Number(row.base_strength || 0);
-    const baseEndurance = Number(row.base_endurance || 0);
-    const adjustStrength = Number(row.coach_adjust_strength || 0);
-    const adjustEndurance = Number(row.coach_adjust_endurance || 0);
-    const finalStrength = Number(row.final_strength || baseStrength + adjustStrength);
-    const finalEndurance = Number(row.final_endurance || baseEndurance + adjustEndurance);
-    strengthSum += finalStrength;
-    enduranceSum += finalEndurance;
-  });
-  return {
-    strength: Number((strengthSum / list.length).toFixed(1)),
-    endurance: Number((enduranceSum / list.length).toFixed(1)),
-  };
 }
 
 async function getDB() {
@@ -467,41 +425,6 @@ async function localCreateRegistration(eventId, payload) {
   };
 }
 
-function isPrivilegedRole(role) {
-  const safeRole = String(role || '').toLowerCase();
-  return safeRole === 'admin' || safeRole === 'organizer';
-}
-
-function normalizeAlbumPhoto(row, identity = {}, privileged = false) {
-  const safe = row || {};
-  const ownerByUserId = !!(
-    identity.user_id
-    && safe.uploader_user_id
-    && Number(identity.user_id) === Number(safe.uploader_user_id)
-  );
-  const ownerByOpenid = !!(
-    identity.openid
-    && safe.uploader_openid
-    && identity.openid === safe.uploader_openid
-  );
-  return {
-    id: safe.id || null,
-    event_id: safe.event_id || null,
-    file_id: safe.file_id || '',
-    thumb_file_id: safe.thumb_file_id || '',
-    file_path: safe.file_path || '',
-    mime_type: safe.mime_type || '',
-    width: safe.width || null,
-    height: safe.height || null,
-    size_bytes: safe.size_bytes || null,
-    shot_at: safe.shot_at || null,
-    status: safe.status || 'active',
-    created_at: safe.created_at || null,
-    uploader_openid: safe.uploader_openid || '',
-    can_delete: !!(privileged || ownerByUserId || ownerByOpenid),
-  };
-}
-
 async function localGetAlbumAccess(eventId) {
   const db = await getDB();
   const safeEventId = Number(eventId);
@@ -590,11 +513,10 @@ async function localGetEventAlbum(eventId, options = {}) {
     .eq('status', 'active')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
-    .limit(safeOffset + safeLimit + 1);
+    .range(safeOffset, safeOffset + safeLimit);
   ensureResultOk(result, '查询相册失败');
 
-  const allRows = (result && result.data) || [];
-  const rows = allRows.slice(safeOffset);
+  const rows = (result && result.data) || [];
   const hasMore = rows.length > safeLimit;
   const photos = rows
     .slice(0, safeLimit)
@@ -869,9 +791,49 @@ async function deleteEventAlbumPhoto(eventId, photoId) {
   }
 }
 
+// --- Admin User Management ---
+
+async function listUsers(options = {}) {
+  const limit = Number.isFinite(Number(options.limit)) ? Number(options.limit) : 20;
+  const offset = Number.isFinite(Number(options.offset)) ? Number(options.offset) : 0;
+  const search = String(options.search || '').trim();
+  let path = `/v1/users?offset=${offset}&limit=${limit}`;
+  if (search) {
+    path += `&search=${encodeURIComponent(search)}`;
+  }
+  return callBackend({ path, method: 'GET' });
+}
+
+async function updateUserRole(userId, role) {
+  return callBackend({
+    path: `/v1/users/${userId}/role`,
+    method: 'PATCH',
+    data: { role },
+  });
+}
+
+// --- Lightweight role endpoint ---
+
+async function getMyRole() {
+  try {
+    const result = await callBackend({ path: '/v1/me/role', method: 'GET' });
+    return result && result.role ? result.role : 'runner';
+  } catch (err) {
+    // fallback: extract from cached getMe
+    console.warn('[api] getMyRole fallback:', err && err.message);
+    try {
+      const me = await getMe();
+      return me && me.profile && me.profile.role ? me.profile.role : 'runner';
+    } catch (fallbackErr) {
+      return 'runner';
+    }
+  }
+}
+
 module.exports = {
   resolveMiniIdentity,
   getMe,
+  getMyRole,
   updateMyProfile,
   listEvents,
   getEventDetail,
@@ -883,4 +845,6 @@ module.exports = {
   createEventAlbumPhoto,
   getEventAlbumPhotoDownloadUrl,
   deleteEventAlbumPhoto,
+  listUsers,
+  updateUserRole,
 };

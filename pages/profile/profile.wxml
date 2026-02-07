@@ -1,4 +1,21 @@
 <view class="page">
+  <view class="card loading-card" wx:if="{{loading}}">
+    <view class="loading-hero">
+      <view class="skeleton skeleton-avatar"></view>
+      <view class="loading-hero-text">
+        <view class="skeleton skeleton-line skeleton-line-lg"></view>
+        <view class="skeleton skeleton-line"></view>
+        <view class="skeleton skeleton-line skeleton-line-sm"></view>
+      </view>
+    </view>
+    <view class="loading-grid">
+      <view class="skeleton skeleton-pill"></view>
+      <view class="skeleton skeleton-pill"></view>
+      <view class="skeleton skeleton-pill skeleton-pill-wide"></view>
+    </view>
+  </view>
+
+  <block wx:else>
   <view class="card hero-card">
     <view class="hero-head">
       <view class="hero-top">
@@ -238,28 +255,25 @@
     <view class="attendance-header">
       <text class="section-title">参赛记录</text>
     </view>
-    <view class="attendance-list" wx:if="{{attendanceRecords.length > 0}}">
-      <view
-        class="attendance-item"
-        wx:for="{{attendanceRecords}}"
-        wx:key="id"
-        bindtap="handleAttendanceTap"
-        data-event-id="{{item.eventId}}"
-        data-event-name="{{item.eventName}}"
-        data-event-date="{{item.eventDate}}"
-        data-event-location="{{item.eventLocation}}"
-        hover-class="attendance-item-hover"
-      >
-        <view class="attendance-info">
-          <text class="attendance-title">{{item.eventName || '赛事记录'}}</text>
-          <text class="subtext">{{item.gymName || '未填写场馆'}}</text>
-        </view>
-        <view class="attendance-score">
-          <text class="score-label">强度 {{item.finalStrength || 0}}</text>
-          <text class="score-label">耐力 {{item.finalEndurance || 0}}</text>
+      <view class="attendance-list" wx:if="{{attendanceRecords.length > 0}}">
+        <view
+          class="attendance-item"
+          wx:for="{{attendanceRecords}}"
+          wx:key="id"
+          bindtap="handleAttendanceTap"
+          data-event-id="{{item.eventId}}"
+          data-event-name="{{item.eventName}}"
+          data-event-date="{{item.eventDate}}"
+          data-event-location="{{item.eventLocation}}"
+          hover-class="attendance-item-hover"
+        >
+          <view class="attendance-info">
+            <text class="attendance-title">{{item.eventName || '赛事记录'}}</text>
+            <text class="subtext">{{item.eventDate || '日期未填写'}} · {{item.gymName || '未填写场馆'}}</text>
+          </view>
+          <text class="attendance-arrow">›</text>
         </view>
       </view>
-    </view>
     <view class="empty-state-inline" wx:else>
       <view class="empty-icon">
         <image src="/assets/icons/medal.png" mode="aspectFit" />
@@ -274,6 +288,9 @@
     </button>
     <button class="float-action float-action-admin" wx:if="{{canManageEvents}}" bindtap="goAdminEvents">
       新增赛事
+    </button>
+    <button class="float-action float-action-admin-users" wx:if="{{isAdmin}}" bindtap="goAdminUsers">
+      管理用户
     </button>
   </view>
 
@@ -305,4 +322,5 @@
       </view>
     </view>
   </view>
+</block>
 </view>

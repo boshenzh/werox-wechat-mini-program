@@ -28,7 +28,7 @@
   </view>
 
   <!-- Signup Form Card -->
-  <view class="card form-card">
+  <view class="card form-card" wx:if="{{event && !loading}}">
     <view class="form-head">
       <text class="section-title">报名信息</text>
       <text class="subtext">完成以下内容后即可锁定名额</text>

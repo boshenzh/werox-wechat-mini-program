@@ -1,7 +1,8 @@
 <view class="page">
   <!-- Cover Card -->
   <view class="card cover-card" wx:if="{{event}}">
-    <view class="cover" style="background-image: url('{{event.coverUrl}}');">
+    <view class="cover">
+      <image class="cover-img" src="{{event.coverUrl}}" mode="aspectFill" wx:if="{{event.coverUrl}}" />
       <view class="cover-overlay"></view>
       <view class="cover-badge status-badge-{{event.status}}">{{event.statusText}}</view>
       <view class="type-badge" wx:if="{{event.eventTypeText}}">{{event.eventTypeText}}</view>
@@ -69,6 +70,10 @@
         </view>
       </view>
 
+      <view class="poster-inline" wx:if="{{event.posterUrl}}">
+        <image class="poster-inline-img" src="{{event.posterUrl}}" mode="widthFix" show-menu-by-longpress="true" />
+      </view>
+
       <!-- Registration Info -->
       <view class="reg-info">
         <view class="reg-item">
@@ -87,24 +92,35 @@
         </view>
       </view>
 
-      <!-- Intensity Indicators -->
-      <view class="intensity-section" wx:if="{{event.baseStrength > 0 || event.baseEndurance > 0}}">
-        <view class="intensity-row">
-          <view class="intensity-item">
-            <text class="intensity-label">强度</text>
-            <view class="intensity-bar">
-              <view class="intensity-fill strength" style="width: {{event.baseStrength * 10}}%"></view>
-            </view>
-            <text class="intensity-value">{{event.baseStrength}}/10</text>
-          </view>
-          <view class="intensity-item">
-            <text class="intensity-label">耐力</text>
-            <view class="intensity-bar">
-              <view class="intensity-fill endurance" style="width: {{event.baseEndurance * 10}}%"></view>
-            </view>
-            <text class="intensity-value">{{event.baseEndurance}}/10</text>
-          </view>
+      <!-- Intensity indicators removed (强度/耐力 bar) -->
+    </view>
+  </view>
+
+  <!-- Detail Blocks -->
+  <view class="card info-card" wx:if="{{detailBlocks.length > 0}}">
+    <view class="section-header">
+      <text class="section-title">活动详情</text>
+      <text class="subtext">组织者发布</text>
+    </view>
+    <view class="detail-block-list">
+      <view class="detail-block" wx:for="{{detailBlocks}}" wx:key="index" wx:for-index="blockIndex">
+        <text class="detail-block-title" wx:if="{{item.title}}">{{item.title}}</text>
+        <view class="detail-block-gallery" wx:if="{{item.image_urls && item.image_urls.length}}">
+          <image
+            class="detail-block-thumb"
+            wx:for="{{item.image_urls}}"
+            wx:key="*this"
+            wx:for-item="img"
+            wx:for-index="imgIndex"
+            src="{{img}}"
+            mode="aspectFill"
+            data-block-index="{{blockIndex}}"
+            data-img-index="{{imgIndex}}"
+            bindtap="previewDetailImage"
+            show-menu-by-longpress="true"
+          />
         </view>
+        <text class="detail-block-text" wx:if="{{item.content}}">{{item.content}}</text>
       </view>
     </view>
   </view>
@@ -131,7 +147,7 @@
   </view>
 
   <!-- Highlights Card -->
-  <view class="card info-card" wx:if="{{event && event.highlights.length}}">
+  <view class="card info-card" wx:if="{{event && event.highlights && event.highlights.length > 0}}">
     <text class="section-title">赛事亮点</text>
     <view class="highlight-list">
       <view class="highlight-item" wx:for="{{event.highlights}}" wx:key="index">
@@ -141,20 +157,10 @@
     </view>
   </view>
 
-  <!-- Poster Card -->
-  <view class="card info-card" wx:if="{{event && event.posterUrl}}">
-    <text class="section-title">赛事海报</text>
-    <image class="poster-img" src="{{event.posterUrl}}" mode="widthFix" show-menu-by-longpress="true" />
-  </view>
-
   <!-- Album Card -->
   <view class="card info-card">
     <view class="section-header">
       <text class="section-title">赛事相册</text>
-      <button class="ghost-btn upload-btn" bindtap="handleUpload" wx:if="{{albumSummary.canUpload}}">
-        <image src="/assets/icons/upload.png" class="btn-icon" mode="aspectFit" />
-        <text>上传</text>
-      </button>
     </view>
     <text class="subtext" wx:if="{{albumSummary.canView}}">
       共 {{albumSummary.totalPhotos}} 张照片，支持查看与下载原图
@@ -166,9 +172,9 @@
       <view class="empty-icon">
         <image src="/assets/icons/camera.png" mode="aspectFit" />
       </view>
-      <text class="subtext">{{albumSummary.canUpload ? '还没有照片，点击上传第一张' : '暂未上传照片'}}</text>
+      <text class="subtext">{{albumSummary.canView ? '暂未上传照片' : '暂未开放相册'}}</text>
     </view>
-    <button class="ghost-btn album-entry-btn" bindtap="openAlbum">进入相册</button>
+    <button class="ghost-btn album-entry-btn" bindtap="openAlbum" wx:if="{{albumSummary.canView}}">进入相册</button>
   </view>
 
   <!-- Empty State -->
@@ -213,7 +219,7 @@
   <view class="bottom-action-bar" wx:if="{{event}}">
     <button class="ghost-btn action-btn share-btn" open-type="share">分享</button>
     <button class="primary-btn action-btn signup-btn" bindtap="handleRegister" disabled="{{isFull}}">
-      {{isFull ? '报名已满' : '立即报名'}}
+      {{isFull ? '报名已满' : (isSigned ? '已报名' : '立即报名')}}
     </button>
   </view>
 </view>

@@ -5,6 +5,7 @@
     "pages/event-album/event-album",
     "pages/event-signup/event-signup",
     "pages/admin-events/admin-events",
+    "pages/admin-users/admin-users",
     "pages/profile/profile"
   ],
   "window": {

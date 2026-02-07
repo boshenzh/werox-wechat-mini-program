@@ -5,6 +5,7 @@ const {
   getEventAlbumPhotoDownloadUrl,
   deleteEventAlbumPhoto,
 } = require('../../utils/api');
+const { track } = require('../../utils/analytics');
 
 const REFRESH_TTL_MS = 30000;
 const PAGE_LIMIT = 20;
@@ -18,11 +19,16 @@ Page({
     canUpload: false,
     backendUnavailable: false,
     photos: [],
+    waterfallLeft: [],
+    waterfallRight: [],
     offset: 0,
     hasMore: false,
     loading: true,
     loadingMore: false,
     uploading: false,
+    previewVisible: false,
+    previewIndex: 0,
+    currentPreview: null,
   },
 
   onLoad(query) {
@@ -30,6 +36,8 @@ Page({
     this.setData({ eventId: Number.isFinite(eventId) ? eventId : null });
     this.lastLoadedAt = 0;
     this.loadingPromise = null;
+    this._viewTracked = false;
+    track('album_page_open', { event_id: Number.isFinite(eventId) ? String(eventId) : '' });
     this.refreshAlbum(true);
   },
 
@@ -109,6 +117,14 @@ Page({
 
         if (canView) {
           await this.loadPhotos(true);
+          if (!this._viewTracked) {
+            this._viewTracked = true;
+            track('album_view', {
+              event_id: String(this.data.eventId),
+              total_photos: totalPhotos,
+              can_upload: canUpload ? 1 : 0,
+            });
+          }
         }
 
         this.lastLoadedAt = Date.now();
@@ -159,10 +175,18 @@ Page({
         ? Number(pagination.next_offset)
         : merged.length;
 
+      const wf = this.buildWaterfall(merged);
+      const nextPreview = this.data.previewVisible
+        ? (merged[this.data.previewIndex] || null)
+        : null;
+
       this.setData({
         photos: merged,
+        waterfallLeft: wf.left,
+        waterfallRight: wf.right,
         offset: hasMore ? nextOffset : merged.length,
         hasMore,
+        currentPreview: nextPreview,
       });
     } catch (err) {
       console.error('Load album photos failed', err);
@@ -170,6 +194,35 @@ Page({
     } finally {
       this.setData({ [loadingKey]: false });
     }
+  },
+
+  estimateWaterfallScore(item) {
+    const w = Number(item && item.width ? item.width : 0);
+    const h = Number(item && item.height ? item.height : 0);
+    // Use aspect ratio as a stable proxy for layout height. Add a small constant
+    // for the meta strip to keep columns balanced.
+    if (w > 0 && h > 0) {
+      return h / w + 0.12;
+    }
+    return 1.12;
+  },
+
+  buildWaterfall(list) {
+    const left = [];
+    const right = [];
+    let leftSum = 0;
+    let rightSum = 0;
+    (list || []).forEach((item) => {
+      const score = this.estimateWaterfallScore(item);
+      if (leftSum <= rightSum) {
+        left.push(item);
+        leftSum += score;
+      } else {
+        right.push(item);
+        rightSum += score;
+      }
+    });
+    return { left, right };
   },
 
   getFileExt(path = '') {
@@ -229,6 +282,10 @@ Page({
       if (!files.length) return;
 
       this.setData({ uploading: true });
+      track('album_upload_start', {
+        event_id: String(this.data.eventId),
+        count: files.length,
+      });
 
       let successCount = 0;
       let failedCount = 0;
@@ -274,6 +331,12 @@ Page({
         wx.showToast({ title: `失败 ${failedCount} 张`, icon: 'none' });
       }
 
+      track('album_upload_result', {
+        event_id: String(this.data.eventId),
+        success: successCount,
+        failed: failedCount,
+      });
+
       await this.refreshAlbum(true);
     } catch (err) {
       if (err && err.errMsg && err.errMsg.includes('cancel')) return;
@@ -289,16 +352,29 @@ Page({
     const targetId = e.currentTarget && e.currentTarget.dataset ? Number(e.currentTarget.dataset.id) : null;
     if (!Number.isFinite(targetId)) return;
 
-    const urls = this.data.photos
-      .map((item) => item.previewUrl || item.thumbUrl)
-      .filter(Boolean);
     const current = this.data.photos.find((item) => Number(item.id) === targetId);
-    if (!current || !current.previewUrl || urls.length === 0) return;
+    if (!current) return;
 
-    wx.previewImage({
-      current: current.previewUrl,
-      urls,
-      showmenu: true,
+    const index = this.data.photos.findIndex((item) => Number(item.id) === targetId);
+    this.setData({
+      previewVisible: true,
+      previewIndex: index >= 0 ? index : 0,
+      currentPreview: current,
+    });
+  },
+
+  noop() {},
+
+  closePreview() {
+    this.setData({ previewVisible: false });
+  },
+
+  handlePreviewChange(e) {
+    const idx = e && e.detail ? Number(e.detail.current) : 0;
+    const next = this.data.photos && this.data.photos[idx] ? this.data.photos[idx] : null;
+    this.setData({
+      previewIndex: Number.isFinite(idx) ? idx : 0,
+      currentPreview: next,
     });
   },
 
@@ -333,12 +409,13 @@ Page({
     });
   },
 
-  async handleDownload(e) {
-    const photoId = e.currentTarget && e.currentTarget.dataset ? Number(e.currentTarget.dataset.id) : null;
-    if (!Number.isFinite(photoId)) return;
-
+  async downloadPhoto(photoId) {
     wx.showLoading({ title: '准备下载', mask: true });
     try {
+      track('album_download', {
+        event_id: String(this.data.eventId || ''),
+        photo_id: String(photoId),
+      });
       const result = await getEventAlbumPhotoDownloadUrl(this.data.eventId, photoId);
       let url = result && (result.download_url || result.download_url_encoded)
         ? (result.download_url || result.download_url_encoded)
@@ -377,6 +454,13 @@ Page({
     }
   },
 
+  async downloadCurrent() {
+    const current = this.data.currentPreview;
+    const photoId = current && current.id ? Number(current.id) : null;
+    if (!Number.isFinite(photoId)) return;
+    await this.downloadPhoto(photoId);
+  },
+
   async handleDelete(e) {
     const photoId = e.currentTarget && e.currentTarget.dataset ? Number(e.currentTarget.dataset.id) : null;
     if (!Number.isFinite(photoId)) return;
@@ -399,14 +483,32 @@ Page({
     try {
       await deleteEventAlbumPhoto(this.data.eventId, photoId);
       const nextPhotos = this.data.photos.filter((item) => Number(item.id) !== photoId);
+      const nextWf = this.buildWaterfall(nextPhotos);
       this.setData({
         photos: nextPhotos,
+        waterfallLeft: nextWf.left,
+        waterfallRight: nextWf.right,
         totalPhotos: Math.max(Number(this.data.totalPhotos || 0) - 1, 0),
+      });
+      track('album_delete', {
+        event_id: String(this.data.eventId || ''),
+        photo_id: String(photoId),
       });
       wx.showToast({ title: '已删除', icon: 'success' });
     } catch (err) {
       console.error('Delete photo failed', err);
       wx.showToast({ title: err && err.message ? err.message : '删除失败', icon: 'none' });
     }
+  },
+
+  async deleteCurrent() {
+    const current = this.data.currentPreview;
+    const photoId = current && current.id ? Number(current.id) : null;
+    if (!Number.isFinite(photoId)) return;
+    if (!current || !current.can_delete) return;
+
+    // Reuse the same delete confirmation UX.
+    await this.handleDelete({ currentTarget: { dataset: { id: photoId } } });
+    this.setData({ previewVisible: false });
   },
 });

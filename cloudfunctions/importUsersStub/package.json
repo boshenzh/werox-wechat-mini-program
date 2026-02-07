@@ -1,6 +1,0 @@
-{
-  "name": "importUsersStub",
-  "dependencies": {
-    "wx-server-sdk": "latest"
-  }
-}

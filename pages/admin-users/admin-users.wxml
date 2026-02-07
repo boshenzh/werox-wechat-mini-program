@@ -1,0 +1,71 @@
+<view class="page">
+  <!-- Search Bar -->
+  <view class="search-bar">
+    <view class="search-input-wrap">
+      <image class="search-icon" src="/assets/icons/search.png" mode="aspectFit" />
+      <input
+        class="search-input"
+        placeholder="搜索昵称"
+        placeholder-class="search-placeholder"
+        value="{{searchText}}"
+        bindinput="onSearchInput"
+        bindconfirm="onSearchConfirm"
+        confirm-type="search"
+      />
+      <text class="search-clear" wx:if="{{searchText}}" bindtap="clearSearch">清除</text>
+    </view>
+  </view>
+
+  <!-- Loading Skeleton -->
+  <view class="card user-card skeleton-card" wx:if="{{loading && users.length === 0}}" wx:for="{{[1,2,3]}}" wx:key="*this">
+    <view class="user-row">
+      <view class="skeleton skeleton-avatar-sm"></view>
+      <view class="skeleton-user-info">
+        <view class="skeleton skeleton-name"></view>
+        <view class="skeleton skeleton-role-tag"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- User List -->
+  <block wx:if="{{!loading || users.length > 0}}">
+    <view class="card user-card" wx:for="{{users}}" wx:key="id">
+      <view class="user-row">
+        <view class="user-avatar-wrap">
+          <image class="user-avatar" src="{{item.avatar_file_id}}" mode="aspectFill" wx:if="{{item.avatar_file_id}}" />
+          <view class="avatar-placeholder-icon small" wx:else>
+            <image src="/assets/icons/user-placeholder.png" mode="aspectFit" />
+          </view>
+        </view>
+
+        <view class="user-info">
+          <text class="user-name">{{item.nickname || '未命名用户'}}</text>
+          <text class="user-meta">ID: {{item.id}}</text>
+        </view>
+
+        <view class="role-badge role-{{item.role || 'runner'}}" bindtap="onRoleTap" data-user-id="{{item.id}}" data-user-name="{{item.nickname}}" data-current-role="{{item.role}}">
+          <text class="role-badge-text">{{item.roleLabel || '用户'}}</text>
+          <text class="role-badge-arrow">▾</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- Empty State -->
+    <view class="empty-state-box" wx:if="{{!loading && users.length === 0}}">
+      <view class="empty-state-icon">
+        <image src="/assets/icons/search.png" mode="aspectFit" />
+      </view>
+      <text class="empty-state-title">未找到用户</text>
+      <text class="empty-state-desc" wx:if="{{searchText}}">未找到匹配"{{searchText}}"的用户</text>
+      <text class="empty-state-desc" wx:else>暂无用户数据</text>
+    </view>
+
+    <!-- Load More -->
+    <view class="load-more" wx:if="{{hasMore && !loadingMore}}" bindtap="loadMore">
+      <text class="load-more-text">加载更多</text>
+    </view>
+    <view class="load-more" wx:if="{{loadingMore}}">
+      <text class="load-more-text loading-text">加载中...</text>
+    </view>
+  </block>
+</view>

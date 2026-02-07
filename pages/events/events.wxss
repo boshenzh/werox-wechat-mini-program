@@ -143,14 +143,21 @@
 .event-cover {
   height: 306rpx;
   position: relative;
-  background-size: cover;
-  background-position: center;
   background-color: rgba(30, 30, 35, 0.8);
+}
+
+.cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
 }
 
 .cover-overlay {
   position: absolute;
   inset: 0;
+  z-index: 2;
   background: linear-gradient(
     180deg,
     rgba(8, 8, 12, 0.12) 0%,
@@ -173,42 +180,6 @@
   font-weight: 600;
   backdrop-filter: blur(8rpx);
   -webkit-backdrop-filter: blur(8rpx);
-}
-
-.status-badge-draft {
-  color: #c1c7d0;
-  border-color: rgba(156, 163, 175, 0.52);
-  background: rgba(156, 163, 175, 0.16);
-}
-
-.status-badge-upcoming {
-  color: #7db8ff;
-  border-color: rgba(96, 165, 250, 0.56);
-  background: rgba(96, 165, 250, 0.2);
-}
-
-.status-badge-open {
-  color: #3dd9a0;
-  border-color: rgba(52, 211, 153, 0.58);
-  background: rgba(52, 211, 153, 0.17);
-}
-
-.status-badge-closed {
-  color: #ffd978;
-  border-color: rgba(251, 191, 36, 0.58);
-  background: rgba(251, 191, 36, 0.17);
-}
-
-.status-badge-ongoing {
-  color: #f59e0b;
-  border-color: rgba(245, 158, 11, 0.62);
-  background: rgba(245, 158, 11, 0.18);
-}
-
-.status-badge-ended {
-  color: #b8a5f2;
-  border-color: rgba(167, 139, 250, 0.55);
-  background: rgba(167, 139, 250, 0.18);
 }
 
 .format-badge {
@@ -315,43 +286,7 @@
   font-weight: 600;
 }
 
-.intensity-row {
-  display: flex;
-  gap: 20rpx;
-  padding-top: 6rpx;
-}
-
-.intensity-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-}
-
-.intensity-label {
-  font-size: 20rpx;
-  color: #a3a3a3;
-}
-
-.intensity-bar {
-  height: 8rpx;
-  border-radius: 999rpx;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.09);
-}
-
-.intensity-fill {
-  height: 100%;
-  border-radius: 999rpx;
-}
-
-.intensity-fill.strength {
-  background: linear-gradient(90deg, #f59e0b 0%, #f97316 100%);
-}
-
-.intensity-fill.endurance {
-  background: linear-gradient(90deg, #34d399 0%, #22d3ee 100%);
-}
+/* Intensity indicators removed (强度/耐力 bar) */
 
 .animate-in {
   opacity: 0;

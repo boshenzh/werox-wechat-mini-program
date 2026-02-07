@@ -3,7 +3,7 @@
  * Backend-first implementation for unified Mini Program + iOS architecture.
  */
 
-const { resolveMiniIdentity, getMe } = require('./api');
+const { resolveMiniIdentity, getMe, getMyRole } = require('./api');
 
 /**
  * Default profile template for new users
@@ -57,16 +57,39 @@ async function getOrCreateProfile(openid) {
 }
 
 /**
- * Get user role from backend profile.
+ * Get user role from backend.
+ * Uses lightweight /v1/me/role endpoint to avoid fetching full profile + attendance records.
+ * Falls back to full getMe() if the lightweight endpoint is unavailable.
  */
 async function getUserRole() {
   try {
-    const me = await getMe();
-    const role = me && me.profile && me.profile.role ? me.profile.role : '';
-    return role || 'runner';
+    // Try lightweight endpoint first (avoids fetching attendance records + computing scores)
+    const app = getApp();
+    const cachedRole = app && app.globalData ? app.globalData._cachedRole : null;
+    if (cachedRole) return cachedRole;
+
+    const role = await getMyRole();
+    if (app && app.globalData) {
+      app.globalData._cachedRole = role;
+    }
+    return role;
   } catch (err) {
     console.error('Failed to get user role:', err);
     return 'runner';
+  }
+}
+
+/**
+ * Invalidate cached role (call after role changes).
+ */
+function clearRoleCache() {
+  try {
+    const app = getApp();
+    if (app && app.globalData) {
+      app.globalData._cachedRole = null;
+    }
+  } catch (err) {
+    // ignore
   }
 }
 
@@ -75,4 +98,5 @@ module.exports = {
   getOrCreateProfile,
   getCurrentOpenid,
   getUserRole,
+  clearRoleCache,
 };

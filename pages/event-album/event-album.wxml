@@ -16,26 +16,27 @@
   </view>
 
   <view class="card info-card" wx:if="{{canView && photos.length > 0}}">
-    <view class="photo-grid">
-      <view
-        class="photo-item"
-        wx:for="{{photos}}"
-        wx:key="id"
-        data-id="{{item.id}}"
-        bindtap="handlePreview"
-      >
-        <image class="photo-image" src="{{item.thumbUrl || item.previewUrl}}" mode="aspectFill" />
-        <view class="photo-overlay">
-          <text class="photo-time">{{item.createdText || '已上传'}}</text>
+    <view class="waterfall">
+      <view class="waterfall-col">
+        <view
+          class="wf-item"
+          wx:for="{{waterfallLeft}}"
+          wx:key="id"
+          data-id="{{item.id}}"
+          bindtap="handlePreview"
+        >
+          <image class="wf-image" src="{{item.thumbUrl || item.previewUrl}}" mode="widthFix" lazy-load="true" />
         </view>
-        <view class="photo-actions">
-          <button class="photo-action ghost-btn" data-id="{{item.id}}" catchtap="handleDownload">下载原图</button>
-          <button
-            class="photo-action delete-btn"
-            wx:if="{{item.can_delete}}"
-            data-id="{{item.id}}"
-            catchtap="handleDelete"
-          >删除</button>
+      </view>
+      <view class="waterfall-col">
+        <view
+          class="wf-item"
+          wx:for="{{waterfallRight}}"
+          wx:key="id"
+          data-id="{{item.id}}"
+          bindtap="handlePreview"
+        >
+          <image class="wf-image" src="{{item.thumbUrl || item.previewUrl}}" mode="widthFix" lazy-load="true" />
         </view>
       </view>
     </view>
@@ -69,11 +70,37 @@
     加载更多
   </button>
 
-  <view class="empty-state-box" wx:if="{{loading}}">
-    <view class="empty-state-icon">
-      <image src="/assets/icons/camera.png" mode="aspectFit" />
+  <view class="loading-skeleton" wx:if="{{loading}}">
+    <view class="skeleton-grid">
+      <view class="skeleton-thumb skeleton" wx:for="{{[1,2,3,4]}}" wx:key="index"></view>
     </view>
-    <text class="empty-state-title">加载中</text>
-    <text class="empty-state-desc">正在获取赛事照片，请稍候</text>
+    <text class="subtext loading-hint">正在获取赛事照片，请稍候</text>
+  </view>
+
+  <view class="preview-mask" wx:if="{{previewVisible}}" catchtap="closePreview">
+    <view class="preview-panel" catchtap="noop">
+      <swiper
+        class="preview-swiper"
+        current="{{previewIndex}}"
+        circular="true"
+        bindchange="handlePreviewChange"
+      >
+        <swiper-item wx:for="{{photos}}" wx:key="id">
+          <view class="preview-slide">
+            <image class="preview-image" src="{{item.previewUrl || item.thumbUrl}}" mode="aspectFit" />
+          </view>
+        </swiper-item>
+      </swiper>
+
+      <view class="preview-actions">
+        <button class="primary-btn preview-btn" bindtap="downloadCurrent">下载原图</button>
+        <button class="ghost-btn preview-btn" bindtap="closePreview">关闭</button>
+        <button
+          class="preview-btn delete-btn"
+          wx:if="{{currentPreview && currentPreview.can_delete}}"
+          bindtap="deleteCurrent"
+        >删除</button>
+      </view>
+    </view>
   </view>
 </view>

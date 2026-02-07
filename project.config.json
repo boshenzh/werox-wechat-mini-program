@@ -20,7 +20,19 @@
   "cloudfunctionRoot": "cloudfunctions",
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": "node_modules" },
+      { "type": "folder", "value": "cloudrun" },
+      { "type": "folder", "value": "scripts" },
+      { "type": "file", "value": "prefill_users.json" },
+      { "type": "file", "value": "prefill_users.jsonl" },
+      { "type": "file", "value": "prefill_users_clean.jsonl" },
+      { "type": "file", "value": "PROCESS.md" },
+      { "type": "file", "value": "PLAN.md" },
+      { "type": "file", "value": "AGENTS.md" },
+      { "type": "file", "value": "CLAUDE.md" },
+      { "type": "file", "value": ".mcp.json" }
+    ],
     "include": []
   },
   "appid": "wxdaa369fb49c7af17",

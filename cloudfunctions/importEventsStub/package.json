@@ -1,6 +1,0 @@
-{
-  "name": "importEventsStub",
-  "dependencies": {
-    "wx-server-sdk": "latest"
-  }
-}

@@ -9,6 +9,83 @@
     radial-gradient(circle at 0% 100%, rgba(245, 158, 11, 0.08), transparent 42%);
 }
 
+.loading-card {
+  padding: 22rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.loading-hero {
+  display: flex;
+  gap: 16rpx;
+}
+
+.loading-hero-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  padding-top: 6rpx;
+}
+
+.loading-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.skeleton {
+  border-radius: 16rpx;
+  background: linear-gradient(
+    90deg,
+    rgba(30, 30, 35, 0.72) 25%,
+    rgba(55, 55, 62, 0.86) 50%,
+    rgba(30, 30, 35, 0.72) 75%
+  );
+  background-size: 200% 100%;
+  animation: profile-skeleton 1.35s ease-in-out infinite;
+}
+
+@keyframes profile-skeleton {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-avatar {
+  width: 168rpx;
+  height: 168rpx;
+  border-radius: 28rpx;
+}
+
+.skeleton-line {
+  height: 28rpx;
+  width: 78%;
+}
+
+.skeleton-line-lg {
+  height: 38rpx;
+  width: 62%;
+}
+
+.skeleton-line-sm {
+  width: 46%;
+}
+
+.skeleton-pill {
+  height: 54rpx;
+  width: calc(50% - 6rpx);
+  border-radius: 18rpx;
+}
+
+.skeleton-pill-wide {
+  width: 100%;
+}
+
 .hero-card,
 .edit-card,
 .info-card,
@@ -343,7 +420,8 @@
 
 .edit-actions {
   position: sticky;
-  bottom: 12rpx;
+  bottom: calc(12rpx + constant(safe-area-inset-bottom));
+  bottom: calc(12rpx + env(safe-area-inset-bottom));
   display: flex;
   gap: 10rpx;
   padding-top: 4rpx;
@@ -378,7 +456,7 @@
   border: 1px solid rgba(245, 158, 11, 0.16);
   background: rgba(12, 12, 16, 0.68);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10rpx;
   transition: all 120ms ease;
@@ -401,16 +479,12 @@
   font-weight: 600;
 }
 
-.attendance-score {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4rpx;
-}
-
-.score-label {
-  font-size: 21rpx;
-  color: #fde68a;
+.attendance-arrow {
+  flex-shrink: 0;
+  color: rgba(245, 158, 11, 0.75);
+  font-size: 34rpx;
+  line-height: 1;
+  transform: translateY(-2rpx);
 }
 
 .empty-state-inline {
@@ -485,6 +559,12 @@
   border: 1px solid rgba(245, 158, 11, 0.66);
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   color: #0b0b0f;
+}
+
+.float-action-admin-users {
+  border: 1px solid rgba(96, 165, 250, 0.52);
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.18), rgba(96, 165, 250, 0.08));
+  color: #60a5fa;
 }
 
 .auth-mask {

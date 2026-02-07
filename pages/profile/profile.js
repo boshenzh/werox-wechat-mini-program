@@ -1,5 +1,8 @@
 const { getCurrentOpenid, DEFAULT_PROFILE } = require('../../utils/user');
 const { getMe, getUserByOpenid, updateMyProfile, listEvents } = require('../../utils/api');
+const { track } = require('../../utils/analytics');
+
+const PROFILE_REFRESH_INTERVAL_MS = 30 * 1000;
 
 const OPTION_MAP = {
   sex: 'sexOptions',
@@ -36,6 +39,7 @@ Page({
     backupTagText: '',
     backupSelectedTag: '',
     canManageEvents: false,
+    isAdmin: false,
     isSelf: true,
     attendanceRecords: [],
     loading: true,
@@ -59,36 +63,60 @@ Page({
   },
 
   onShow() {
-    this.initProfile();
+    this.initProfile({ forceRefresh: false });
   },
 
-  async initProfile() {
+  onPullDownRefresh() {
+    // Pull-to-refresh should always force reload and stop the native spinner.
+    this.initProfile({ forceRefresh: true, stopPullDown: true });
+  },
+
+  shouldRefresh(forceRefresh) {
+    if (forceRefresh) return true;
+    if (!this.lastLoadedAt) return true;
+    return Date.now() - this.lastLoadedAt > PROFILE_REFRESH_INTERVAL_MS;
+  },
+
+  async initProfile(options = {}) {
+    const { forceRefresh = false, stopPullDown = false } = options;
+    if (this._initPromise) return this._initPromise;
+    if (!this.shouldRefresh(forceRefresh)) {
+      if (stopPullDown) wx.stopPullDownRefresh();
+      return null;
+    }
+
     this.setData({ loading: true });
     this._eventLookupCache = null;
     try {
-      const openid = await getCurrentOpenid();
-      const viewOpenid = this.data.viewOpenid || '';
-      const targetOpenid = viewOpenid || openid;
-      const isSelf = !viewOpenid || viewOpenid === openid;
+      this._initPromise = (async () => {
+        const openid = await getCurrentOpenid();
+        const viewOpenid = this.data.viewOpenid || '';
+        const targetOpenid = viewOpenid || openid;
+        const isSelf = !viewOpenid || viewOpenid === openid;
 
-      this.setData({
-        openid,
-        viewOpenid: targetOpenid,
-        isSelf,
-        isEditing: false,
-        showAuthPrompt: false,
-      });
+        this.setData({
+          openid,
+          viewOpenid: targetOpenid,
+          isSelf,
+          isEditing: false,
+          showAuthPrompt: false,
+        });
 
-      await Promise.all([
-        this.loadProfile(targetOpenid, { allowCreate: isSelf }),
-        this.loadAttendance(targetOpenid),
-      ]);
+        await this.loadBundle(targetOpenid, { allowCreate: isSelf, isSelf });
+        this.lastLoadedAt = Date.now();
+        return true;
+      })();
+
+      return await this._initPromise;
     } catch (err) {
       console.error('Failed to load profile', err);
       wx.showToast({ title: '资料加载失败', icon: 'none' });
     } finally {
       this.setData({ loading: false });
+      this._initPromise = null;
+      if (stopPullDown) wx.stopPullDownRefresh();
     }
+    return null;
   },
 
   parseTags(rawTags) {
@@ -107,11 +135,13 @@ Page({
     return [];
   },
 
-  async loadProfile(openid, options = {}) {
-    const { allowCreate = true } = options;
-    const isSelf = !!this.data.isSelf;
+  async loadBundle(openid, options = {}) {
+    const { allowCreate = true, isSelf = true } = options;
     const response = isSelf ? await getMe() : await getUserByOpenid(openid);
     const doc = response && response.profile ? response.profile : null;
+    const records = response && Array.isArray(response.attendance_records)
+      ? response.attendance_records
+      : [];
 
     if (!doc) {
       if (!allowCreate) {
@@ -125,6 +155,7 @@ Page({
           isEditing: false,
           roleLabel: '用户',
           showAuthPrompt: false,
+          attendanceRecords: [],
         });
         this.syncPickerIndexes(emptyProfile);
         return;
@@ -139,6 +170,7 @@ Page({
         canManageEvents: false,
         isEditing: false,
         roleLabel: '用户',
+        attendanceRecords: [],
       });
       this.syncPickerIndexes(emptySelfProfile);
       this.maybePromptProfileAuth(emptySelfProfile);
@@ -148,6 +180,7 @@ Page({
     const role = doc.role || 'runner';
     const tags = this.parseTags(doc.tags);
     const canManageEvents = isSelf && this.hasEventManageAccess(role);
+    const isAdmin = isSelf && String(role).toLowerCase() === 'admin';
     const roleLabel = this.getRoleLabel(role);
 
     const nextProfile = {
@@ -173,6 +206,7 @@ Page({
       tagText: Array.isArray(tags) ? tags.join('，') : '',
       selectedTag,
       canManageEvents,
+      isAdmin,
       isEditing: false,
       roleLabel,
     });
@@ -183,58 +217,40 @@ Page({
     } else {
       this.setData({ showAuthPrompt: false });
     }
+
+    await this.applyAttendanceRecords(records);
   },
 
-  async loadAttendance(openid) {
-    try {
-      const response = this.data.isSelf ? await getMe() : await getUserByOpenid(openid);
-      const records = response && Array.isArray(response.attendance_records)
-        ? response.attendance_records
-        : [];
+  async applyAttendanceRecords(records) {
+    let mappedRecords = (records || []).map((record) => {
+      const eventId = this.normalizeEventId(
+        record && (
+          record.event_id
+          || record.eventId
+          || record.eventID
+        )
+      );
+      const eventName = record.event_title || '赛事记录';
+      const eventDate = record.event_date || '';
+      const eventLocation = record.event_location || '';
+      const gymName = eventLocation || '未填写场馆';
+      return {
+        ...record,
+        eventId,
+        eventName,
+        eventDate,
+        eventLocation,
+        gymName,
+      };
+    });
 
-      let mappedRecords = (records || []).map((record) => {
-        const eventId = this.normalizeEventId(
-          record && (
-            record.event_id
-            || record.eventId
-            || record.eventID
-          )
-        );
-        const eventName = record.event_title || '赛事记录';
-        const eventDate = record.event_date || '';
-        const eventLocation = record.event_location || '';
-        const gymName = eventLocation || '未填写场馆';
-        const baseStrength = Number(record.base_strength || 0);
-        const baseEndurance = Number(record.base_endurance || 0);
-        const adjustStrength = Number(record.coach_adjust_strength || 0);
-        const adjustEndurance = Number(record.coach_adjust_endurance || 0);
-        const finalStrength = Number(record.final_strength || baseStrength + adjustStrength);
-        const finalEndurance = Number(record.final_endurance || baseEndurance + adjustEndurance);
-        return {
-          ...record,
-          eventId,
-          eventName,
-          eventDate,
-          eventLocation,
-          gymName,
-          finalStrength,
-          finalEndurance,
-        };
-      });
-
-      if (mappedRecords.some((item) => !item.eventId)) {
-        mappedRecords = await this.fillMissingEventIds(mappedRecords);
-      }
-
-      this.setData({
-        attendanceRecords: mappedRecords,
-      });
-    } catch (err) {
-      console.log('No attendance records found', err.message);
-      this.setData({
-        attendanceRecords: [],
-      });
+    if (mappedRecords.some((item) => !item.eventId)) {
+      mappedRecords = await this.fillMissingEventIds(mappedRecords);
     }
+
+    this.setData({
+      attendanceRecords: mappedRecords,
+    });
   },
 
   getRoleLabel(role) {
@@ -474,6 +490,7 @@ Page({
         backupTagText: this.data.tagText,
         backupSelectedTag: this.data.selectedTag,
       });
+      track('profile_edit_start', { is_self: this.data.isSelf ? 1 : 0 });
       return;
     }
     this.saveProfile();
@@ -518,13 +535,15 @@ Page({
 
     const tags = selectedTag ? [selectedTag] : [];
 
+    // Fix: send tags as array only, not JSON.stringify then re-override.
+    // The BFF/local fallback handles serialization.
     const payload = {
       nickname: profile.nickname,
       birth_year: profile.birth_year ? Number(profile.birth_year) : null,
       bio: profile.bio,
       avatar_file_id: profile.avatar_file_id,
       wechat_id: profile.wechat_id,
-      tags: JSON.stringify(tags),
+      tags,
       sex: profile.sex,
       training_focus: profile.training_focus,
       hyrox_level: profile.hyrox_level,
@@ -534,7 +553,12 @@ Page({
     };
 
     try {
-      await updateMyProfile({ ...payload, tags });
+      track('profile_save_submit', {
+        has_nickname: profile.nickname ? 1 : 0,
+        has_avatar: profile.avatar_file_id ? 1 : 0,
+        has_tag: selectedTag ? 1 : 0,
+      });
+      await updateMyProfile(payload);
 
       wx.hideLoading();
       this.setData({
@@ -547,16 +571,22 @@ Page({
         backupSelectedTag: '',
       });
       this.maybePromptProfileAuth({ ...profile, tags });
+      track('profile_save_success', {});
       wx.showToast({ title: '已保存', icon: 'success' });
     } catch (err) {
       wx.hideLoading();
       console.error('Failed to save profile', err);
+      track('profile_save_fail', { reason: (err && err.message) || '' });
       wx.showToast({ title: '保存失败', icon: 'none' });
     }
   },
 
   goAdminEvents() {
     wx.navigateTo({ url: '/pages/admin-events/admin-events' });
+  },
+
+  goAdminUsers() {
+    wx.navigateTo({ url: '/pages/admin-users/admin-users' });
   },
 
   async handleAttendanceTap(e) {
@@ -569,12 +599,16 @@ Page({
       return;
     }
 
+    const title = (e.currentTarget.dataset.eventName || '').trim();
+    const date = (e.currentTarget.dataset.eventDate || '').trim();
+    const location = (e.currentTarget.dataset.eventLocation || '').trim();
+
     try {
       const lookup = await this.getEventLookup();
       const resolvedId = this.resolveEventIdByMeta({
-        eventName: e.currentTarget.dataset.eventName,
-        eventDate: e.currentTarget.dataset.eventDate,
-        eventLocation: e.currentTarget.dataset.eventLocation,
+        eventName: title,
+        eventDate: date,
+        eventLocation: location,
       }, lookup);
       if (resolvedId) {
         wx.navigateTo({
@@ -586,9 +620,15 @@ Page({
       console.warn('Resolve attendance event id on tap failed', err);
     }
 
-    if (!eventId) {
+    if (!title) {
       wx.showToast({ title: '该记录缺少赛事信息', icon: 'none' });
+      return;
     }
+
+    // Fallback: let event-detail resolve by meta (title/date/location).
+    wx.navigateTo({
+      url: `/pages/event-detail/event-detail?title=${encodeURIComponent(title)}&date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`,
+    });
   },
 
   syncPickerIndexes(profile) {

@@ -45,34 +45,41 @@ function openDocument(filePath) {
   });
 }
 
-function ensureTxtPath(filePath) {
-  if (!filePath) return filePath;
-  const dotIndex = filePath.lastIndexOf('.');
-  if (dotIndex < 0) return `${filePath}.txt`;
-  return `${filePath.slice(0, dotIndex)}.txt`;
+function setClipboardData(data) {
+  return new Promise((resolve, reject) => {
+    wx.setClipboardData({
+      data,
+      success: resolve,
+      fail: reject,
+    });
+  });
 }
 
 async function openDocumentWithFallback(filePath, content) {
   try {
     await openDocument(filePath);
-    return filePath;
+    return { mode: 'open_document', filePath };
   } catch (err) {
-    const errMsg = err && err.errMsg ? String(err.errMsg) : '';
-    const unsupported = errMsg.includes('filetype not supported');
-    if (!unsupported) throw err;
+    // Some platforms don't support previewing CSV/TXT via `wx.openDocument`.
+    // For these formats we fall back to clipboard even if the error message
+    // varies by platform/language.
+    const ext = String(filePath || '').split('.').pop().toLowerCase();
+    const likelyUnsupportedByType = ext === 'csv' || ext === 'txt';
 
-    const txtPath = ensureTxtPath(filePath);
-    await writeFile(txtPath, content);
-    await new Promise((resolve, reject) => {
-      wx.openDocument({
-        filePath: txtPath,
-        fileType: 'txt',
-        showMenu: true,
-        success: resolve,
-        fail: reject,
-      });
-    });
-    return txtPath;
+    const errMsg = err && err.errMsg ? String(err.errMsg) : '';
+    const errText = errMsg.toLowerCase();
+    const unsupportedByMessage = errText.includes('filetype not supported')
+      || errText.includes('file type not supported')
+      || errText.includes('unsupported file type')
+      || errMsg.includes('文件类型')
+      || errMsg.includes('不支持');
+
+    if (!likelyUnsupportedByType && !unsupportedByMessage) throw err;
+
+    // CSV (and txt) are not supported by openDocument on some platforms (e.g. Windows DevTools).
+    // Fallback: copy CSV content to clipboard so admin can paste into Excel/Sheets.
+    await setClipboardData(content);
+    return { mode: 'clipboard', filePath };
   }
 }
 
@@ -145,11 +152,12 @@ async function exportEventParticipantsCsv({ eventId, eventTitle = '' }) {
   const filePath = `${wx.env.USER_DATA_PATH}/${safeName}_${Date.now()}.csv`;
 
   await writeFile(filePath, content);
-  const openedFilePath = await openDocumentWithFallback(filePath, content);
+  const openResult = await openDocumentWithFallback(filePath, content);
 
   return {
     count: list.length,
-    filePath: openedFilePath,
+    filePath: openResult.filePath,
+    mode: openResult.mode,
     role: permission.role,
   };
 }
