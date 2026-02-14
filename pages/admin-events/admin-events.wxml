@@ -277,6 +277,12 @@
           </view>
         </view>
 
+        <view class="form-row switch-row">
+          <text class="form-label">启用候补名单</text>
+          <switch checked="{{form.waitlist_enabled}}" bindchange="handleWaitlistToggle" color="#f59e0b" />
+          <text class="subtext">开启后，报名满员时新用户将自动进入候补队列</text>
+        </view>
+
         <view class="form-row">
           <text class="form-label">基础强度 <text class="slider-value">{{form.base_strength || 5}}</text></text>
           <slider min="1" max="10" step="1" value="{{form.base_strength || 5}}" activeColor="#f59e0b" backgroundColor="rgba(245,158,11,0.2)" block-size="20" block-color="#f59e0b" data-field="base_strength" bindchange="handleSliderChange" />

@@ -550,3 +550,28 @@
   opacity: 0.56;
   box-shadow: none;
 }
+
+.cancel-btn {
+  max-width: 200rpx;
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
+
+.cancel-btn:active {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.waitlisted-btn {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  box-shadow: 0 8rpx 24rpx rgba(96, 165, 250, 0.25);
+}
+
+.waitlist-join-btn {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  box-shadow: 0 8rpx 24rpx rgba(96, 165, 250, 0.3);
+}
+
+.waitlist-count {
+  color: #60a5fa;
+  font-size: 24rpx;
+}

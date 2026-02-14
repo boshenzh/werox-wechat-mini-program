@@ -10,13 +10,13 @@ const { systemAuthHeader, rdbSelect } = require('../lib/cloudbase');
 const { jsonOk, jsonFail, toEq, isCloudbaseAuthError } = require('../lib/helpers');
 
 // Explicit column list for event listing (no select('*'))
-const EVENT_LIST_COLUMNS = 'id,title,location,event_date,event_time,cover_url,status,base_strength,base_endurance,format_mode,event_type,latitude,longitude,max_participants';
+const EVENT_LIST_COLUMNS = 'id,title,location,event_date,event_time,cover_url,status,base_strength,base_endurance,format_mode,event_type,latitude,longitude,max_participants,waitlist_enabled';
 
 // Explicit column list for event detail
-const EVENT_DETAIL_COLUMNS = 'id,title,location,event_date,event_time,cover_url,status,base_strength,base_endurance,format_mode,event_type,latitude,longitude,max_participants,description,detail_blocks,price_open,price_doubles,price_relay,poster_url,created_at,updated_at';
+const EVENT_DETAIL_COLUMNS = 'id,title,location,event_date,event_time,cover_url,status,base_strength,base_endurance,format_mode,event_type,latitude,longitude,max_participants,waitlist_enabled,description,detail_blocks,price_open,price_doubles,price_relay,poster_url,created_at,updated_at';
 
 // Explicit column list for participants in detail view
-const PARTICIPANT_DETAIL_COLUMNS = 'id,user_nickname,user_avatar_file_id,division,user_sex,user_openid,event_id,user_id,team_name,note,event_title,event_date,event_location,payment_amount,payment_status,created_at';
+const PARTICIPANT_DETAIL_COLUMNS = 'id,user_nickname,user_avatar_file_id,division,user_sex,user_openid,event_id,user_id,team_name,note,event_title,event_date,event_location,payment_amount,payment_status,registration_status,waitlist_position,created_at';
 
 router.get('/v1/events', async (req, res) => {
   try {
@@ -49,7 +49,7 @@ router.get('/v1/events', async (req, res) => {
     if (eventIds.length > 0) {
       const inClause = `in.(${eventIds.join(',')})`;
       participants = await rdbSelect('event_participants', {
-        select: 'event_id,user_avatar_file_id',
+        select: 'event_id,user_avatar_file_id,registration_status',
         event_id: inClause,
         order: 'created_at.desc',
         limit: 500, // cap to avoid huge payloads
@@ -59,13 +59,21 @@ router.get('/v1/events', async (req, res) => {
     const grouped = (participants || []).reduce((acc, item) => {
       const key = String(item.event_id || '');
       if (!key) return acc;
+      // Skip cancelled registrations
+      const regStatus = item.registration_status || 'confirmed';
+      if (regStatus === 'cancelled') return acc;
       if (!acc[key]) {
         acc[key] = {
           count: 0,
+          waitlisted_count: 0,
           avatar_file_ids: [],
         };
       }
-      acc[key].count += 1;
+      if (regStatus === 'waitlisted') {
+        acc[key].waitlisted_count += 1;
+      } else {
+        acc[key].count += 1;
+      }
       const avatar = item.user_avatar_file_id || '';
       if (avatar && acc[key].avatar_file_ids.length < 3 && !acc[key].avatar_file_ids.includes(avatar)) {
         acc[key].avatar_file_ids.push(avatar);
@@ -74,10 +82,11 @@ router.get('/v1/events', async (req, res) => {
     }, {});
 
     const mapped = (events || []).map((item) => {
-      const meta = grouped[String(item.id)] || { count: 0, avatar_file_ids: [] };
+      const meta = grouped[String(item.id)] || { count: 0, waitlisted_count: 0, avatar_file_ids: [] };
       return {
         ...item,
         participant_count: meta.count,
+        waitlisted_count: meta.waitlisted_count,
         participant_avatar_file_ids: meta.avatar_file_ids,
       };
     });

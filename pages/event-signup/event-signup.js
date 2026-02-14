@@ -16,6 +16,8 @@ Page({
     loading: true,
     submitting: false,
     isSigned: false,
+    willBeWaitlisted: false,
+    registrationStatus: null,
   },
 
   onLoad(query) {
@@ -59,6 +61,14 @@ Page({
 
       const divisionOptions = ['未选择', ...divisions];
 
+      var participants = detail && Array.isArray(detail.participants) ? detail.participants : [];
+      var confirmedList = participants.filter(function(p) {
+        return (p.registration_status || 'confirmed') === 'confirmed';
+      });
+      var maxP = Number(event.max_participants || 0);
+      var waitlistOn = !!event.waitlist_enabled;
+      var isFull = maxP > 0 && confirmedList.length >= maxP;
+
       this.setData({
         event: {
           id: event.id,
@@ -70,8 +80,10 @@ Page({
           priceRelay: event.price_relay || 0,
           maxParticipants: event.max_participants || null,
           formatMode: event.format_mode || 'for_time',
+          waitlistEnabled: waitlistOn,
         },
-        divisionOptions,
+        divisionOptions: divisionOptions,
+        willBeWaitlisted: isFull && waitlistOn,
       });
     } catch (err) {
       console.error('Load event failed', err);
@@ -91,7 +103,11 @@ Page({
     if (!this.data.eventId) return;
     try {
       const result = await getMyRegistration(this.data.eventId);
-      this.setData({ isSigned: !!(result && result.is_signed) });
+      var regStatus = result && result.registration_status ? result.registration_status : null;
+      this.setData({
+        isSigned: !!(result && result.is_signed),
+        registrationStatus: regStatus,
+      });
     } catch (err) {
       console.error('Check signed failed', err);
     }
@@ -132,19 +148,34 @@ Page({
     });
 
     try {
-      await createRegistration(this.data.eventId, {
+      // If joining waitlist, request subscribe message permission first
+      if (this.data.willBeWaitlisted) {
+        try {
+          var tplId = getApp().globalData.wxSubscribeTplWaitlistPromoted || '';
+          if (tplId) {
+            await wx.requestSubscribeMessage({ tmplIds: [tplId] });
+          }
+        } catch (subErr) {
+          console.warn('Subscribe message request failed or declined:', subErr);
+        }
+      }
+
+      var result = await createRegistration(this.data.eventId, {
         division: this.data.form.division,
         team_name: this.data.form.teamName || '',
         note: this.data.form.note || '',
       });
 
-      wx.showToast({ title: '报名成功', icon: 'success' });
-      this.setData({ isSigned: true });
+      var resultStatus = result && result.registration_status ? result.registration_status : 'confirmed';
+      var successMsg = resultStatus === 'waitlisted' ? '已加入候补' : '报名成功';
+      wx.showToast({ title: successMsg, icon: 'success' });
+      this.setData({ isSigned: true, registrationStatus: resultStatus });
       track('signup_success', {
         event_id: String(this.data.eventId),
         division: this.data.form.division || '',
+        registration_status: resultStatus,
       });
-      setTimeout(() => wx.navigateBack(), 600);
+      setTimeout(function() { wx.navigateBack(); }, 600);
     } catch (err) {
       console.error('Signup failed', err);
       track('signup_fail', {

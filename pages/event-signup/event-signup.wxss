@@ -123,6 +123,16 @@
   opacity: 0.56;
 }
 
+.waitlist-notice-card {
+  border-color: rgba(96, 165, 250, 0.4);
+  background: linear-gradient(145deg, rgba(96, 165, 250, 0.12), rgba(11, 11, 15, 0.95));
+}
+
+.waitlist-submit-btn {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  box-shadow: 0 8rpx 24rpx rgba(96, 165, 250, 0.3);
+}
+
 .loading-state {
   padding: 56rpx 0;
   text-align: center;

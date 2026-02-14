@@ -238,20 +238,35 @@ async function localListEvents() {
     .order('event_date', { ascending: true });
   ensureResultOk(eventsResult, '查询赛事失败');
 
-  const participantsResult = await db
+  // Try to include registration_status for accurate counting
+  var pSelectCols = 'event_id,user_avatar_file_id,registration_status';
+  var participantsResult = await db
     .from('event_participants')
-    .select('event_id,user_avatar_file_id')
+    .select(pSelectCols)
     .order('created_at', { ascending: false });
+  // Fallback if registration_status column doesn't exist yet
+  if (participantsResult && participantsResult.error && String(participantsResult.error.message || '').includes('Unknown column')) {
+    participantsResult = await db
+      .from('event_participants')
+      .select('event_id,user_avatar_file_id')
+      .order('created_at', { ascending: false });
+  }
   ensureResultOk(participantsResult, '查询报名数据失败');
 
   const participantRows = (participantsResult && participantsResult.data) || [];
   const grouped = participantRows.reduce((acc, item) => {
     const eventId = item && item.event_id ? String(item.event_id) : '';
     if (!eventId) return acc;
+    var regStatus = item.registration_status || 'confirmed';
+    if (regStatus === 'cancelled') return acc;
     if (!acc[eventId]) {
-      acc[eventId] = { count: 0, avatarFileIds: [] };
+      acc[eventId] = { count: 0, waitlistedCount: 0, avatarFileIds: [] };
     }
-    acc[eventId].count += 1;
+    if (regStatus === 'waitlisted') {
+      acc[eventId].waitlistedCount += 1;
+    } else {
+      acc[eventId].count += 1;
+    }
     const avatarFileId = item.user_avatar_file_id || '';
     if (avatarFileId && acc[eventId].avatarFileIds.length < 3 && !acc[eventId].avatarFileIds.includes(avatarFileId)) {
       acc[eventId].avatarFileIds.push(avatarFileId);
@@ -260,10 +275,11 @@ async function localListEvents() {
   }, {});
 
   const events = ((eventsResult && eventsResult.data) || []).map((item) => {
-    const meta = grouped[String(item.id)] || { count: 0, avatarFileIds: [] };
+    const meta = grouped[String(item.id)] || { count: 0, waitlistedCount: 0, avatarFileIds: [] };
     return {
       ...item,
       participant_count: meta.count,
+      waitlisted_count: meta.waitlistedCount,
       participant_avatar_file_ids: meta.avatarFileIds,
     };
   });
@@ -318,17 +334,43 @@ async function localGetMyRegistration(eventId) {
     throw new Error('赛事ID不合法');
   }
 
+  let selectCols = 'id,event_id,user_id,user_openid,registration_status,waitlist_position';
   const result = await db
     .from('event_participants')
-    .select('id,event_id,user_id,user_openid')
+    .select(selectCols)
     .eq('event_id', safeEventId)
     .eq('user_openid', openid)
     .limit(1);
+
+  // Retry without new columns if they don't exist yet
+  if (result && result.error && String(result.error.message || '').includes('Unknown column')) {
+    const fallbackResult = await db
+      .from('event_participants')
+      .select('id,event_id,user_id,user_openid')
+      .eq('event_id', safeEventId)
+      .eq('user_openid', openid)
+      .limit(1);
+    ensureResultOk(fallbackResult, '查询报名状态失败');
+    const reg = fallbackResult && Array.isArray(fallbackResult.data) ? fallbackResult.data[0] : null;
+    return {
+      is_signed: !!reg,
+      is_waitlisted: false,
+      registration_status: reg ? 'confirmed' : null,
+      waitlist_position: null,
+      registration: reg || null,
+    };
+  }
+
   ensureResultOk(result, '查询报名状态失败');
 
   const registration = result && Array.isArray(result.data) ? result.data[0] : null;
+  const regStatus = registration ? (registration.registration_status || 'confirmed') : null;
+  const isActive = regStatus === 'confirmed' || regStatus === 'waitlisted';
   return {
-    is_signed: !!registration,
+    is_signed: !!(registration && isActive),
+    is_waitlisted: regStatus === 'waitlisted',
+    registration_status: regStatus,
+    waitlist_position: registration ? (registration.waitlist_position || null) : null,
     registration: registration || null,
   };
 }
@@ -355,27 +397,60 @@ async function localCreateRegistration(eventId, payload) {
     throw new Error('赛事不存在');
   }
 
-  const existedResult = await db
-    .from('event_participants')
-    .select('id')
-    .eq('event_id', safeEventId)
-    .eq('user_openid', openid)
-    .limit(1);
-  ensureResultOk(existedResult, '查询报名状态失败');
-  if (existedResult && Array.isArray(existedResult.data) && existedResult.data.length > 0) {
-    throw new Error('你已报名过');
+  // Check existing registration (including cancelled)
+  let existedRows = [];
+  try {
+    const existedResult = await db.from('event_participants').select('id,registration_status').eq('event_id', safeEventId).eq('user_openid', openid).limit(1);
+    ensureResultOk(existedResult, '查询报名状态失败');
+    existedRows = (existedResult && existedResult.data) || [];
+  } catch (existErr) {
+    if (String(existErr.message || '').includes('Unknown column')) {
+      const fallback = await db.from('event_participants').select('id').eq('event_id', safeEventId).eq('user_openid', openid).limit(1);
+      ensureResultOk(fallback, '查询报名状态失败');
+      existedRows = (fallback && fallback.data) || [];
+      if (existedRows.length > 0) throw new Error('你已报名过');
+    } else {
+      throw existErr;
+    }
+  }
+  const existingRow = existedRows[0] || null;
+  if (existingRow) {
+    const existingStatus = existingRow.registration_status || 'confirmed';
+    if (existingStatus === 'confirmed' || existingStatus === 'waitlisted') {
+      throw new Error('你已报名过');
+    }
+  }
+  const cancelledRow = existingRow && existingRow.registration_status === 'cancelled' ? existingRow : null;
+
+  // Count only confirmed for capacity check
+  let confirmedCount = 0;
+  try {
+    const confirmedResult = await db.from('event_participants').select('id').eq('event_id', safeEventId).eq('registration_status', 'confirmed');
+    ensureResultOk(confirmedResult, '查询报名人数失败');
+    confirmedCount = ((confirmedResult && confirmedResult.data) || []).length;
+  } catch (countErr) {
+    const allResult = await db.from('event_participants').select('id').eq('event_id', safeEventId);
+    ensureResultOk(allResult, '查询报名人数失败');
+    confirmedCount = ((allResult && allResult.data) || []).length;
   }
 
-  const allResult = await db
-    .from('event_participants')
-    .select('id')
-    .eq('event_id', safeEventId);
-  ensureResultOk(allResult, '查询报名人数失败');
-
   const maxParticipants = Number(event.max_participants || 0);
-  const allParticipants = (allResult && allResult.data) || [];
-  if (maxParticipants > 0 && allParticipants.length >= maxParticipants) {
+  const isFull = maxParticipants > 0 && confirmedCount >= maxParticipants;
+  const waitlistEnabled = !!event.waitlist_enabled;
+
+  if (isFull && !waitlistEnabled) {
     throw new Error('报名已满');
+  }
+
+  const registrationStatus = isFull ? 'waitlisted' : 'confirmed';
+  let waitlistPosition = null;
+  if (registrationStatus === 'waitlisted') {
+    try {
+      const wlResult = await db.from('event_participants').select('id').eq('event_id', safeEventId).eq('registration_status', 'waitlisted');
+      waitlistPosition = ((wlResult && wlResult.data) || []).length + 1;
+    } catch (wlErr) {
+      waitlistPosition = 1;
+    }
   }
 
   const division = String(payload && payload.division ? payload.division : '').trim();
@@ -391,6 +466,31 @@ async function localCreateRegistration(eventId, payload) {
   let paymentAmount = priceOpen;
   if (/Doubles/i.test(division)) paymentAmount = priceDoubles;
   if (/Relay/i.test(division)) paymentAmount = priceRelay;
+
+  // If re-activating a cancelled row, UPDATE instead of INSERT
+  if (cancelledRow) {
+    const updatePayload = {
+      registration_status: registrationStatus,
+      waitlist_position: waitlistPosition,
+      cancelled_at: null,
+      division,
+      team_name: teamName,
+      note,
+      user_nickname: profile.nickname || '',
+      user_wechat_id: profile.wechat_id || '',
+      user_sex: profile.sex || '',
+      user_avatar_file_id: profile.avatar_file_id || '',
+      payment_amount: paymentAmount,
+      payment_status: 'pending',
+    };
+    const updateResult = await db.from('event_participants').update(updatePayload).eq('id', cancelledRow.id).select().single();
+    ensureResultOk(updateResult, '报名失败');
+    return {
+      registration: updateResult.data || null,
+      registration_status: registrationStatus,
+      waitlist_position: waitlistPosition,
+    };
+  }
 
   const insertPayload = {
     _openid: openid,
@@ -408,6 +508,8 @@ async function localCreateRegistration(eventId, payload) {
     user_avatar_file_id: profile.avatar_file_id || '',
     payment_amount: paymentAmount,
     payment_status: 'pending',
+    registration_status: registrationStatus,
+    waitlist_position: waitlistPosition,
     base_strength: Number(event.base_strength || 5),
     base_endurance: Number(event.base_endurance || 5),
     final_strength: Number(event.base_strength || 5),
@@ -424,6 +526,8 @@ async function localCreateRegistration(eventId, payload) {
   if (insertResult && insertResult.error && String(insertResult.error.message || '').includes('Unknown column')) {
     const retryPayload = { ...insertPayload };
     delete retryPayload.user_id;
+    delete retryPayload.registration_status;
+    delete retryPayload.waitlist_position;
     insertResult = await db
       .from('event_participants')
       .insert(retryPayload)
@@ -434,6 +538,8 @@ async function localCreateRegistration(eventId, payload) {
 
   return {
     registration: insertResult.data || null,
+    registration_status: registrationStatus,
+    waitlist_position: waitlistPosition,
   };
 }
 
@@ -727,6 +833,68 @@ async function createRegistration(eventId, payload) {
   );
 }
 
+async function localCancelRegistration(eventId) {
+  const db = await getDB();
+  const openid = await getOpenidByFunction();
+  const safeEventId = Number(eventId);
+  if (!Number.isFinite(safeEventId)) {
+    throw new Error('赛事ID不合法');
+  }
+
+  const result = await db
+    .from('event_participants')
+    .select('id,registration_status')
+    .eq('event_id', safeEventId)
+    .eq('user_openid', openid)
+    .limit(1);
+
+  if (result && result.error && String(result.error.message || '').includes('Unknown column')) {
+    throw new Error('取消功能暂不可用');
+  }
+  ensureResultOk(result, '查询报名状态失败');
+  const registration = result && Array.isArray(result.data) ? result.data[0] : null;
+
+  if (!registration) {
+    throw new Error('未找到报名记录');
+  }
+
+  const currentStatus = registration.registration_status || 'confirmed';
+  if (currentStatus === 'cancelled') {
+    throw new Error('已取消报名');
+  }
+  if (currentStatus !== 'confirmed' && currentStatus !== 'waitlisted') {
+    throw new Error('当前状态无法取消');
+  }
+
+  const updateResult = await db
+    .from('event_participants')
+    .update({
+      registration_status: 'cancelled',
+      cancelled_at: new Date().toISOString(),
+    })
+    .eq('id', registration.id);
+  ensureResultOk(updateResult, '取消报名失败');
+
+  // NOTE: local fallback does NOT auto-promote (requires server-side atomicity)
+  return { cancelled: true, previous_status: currentStatus };
+}
+
+async function cancelRegistration(eventId) {
+  return withFallback(
+    function remoteCancel() {
+      return callBackend({
+        path: '/v1/events/' + eventId + '/registrations/me/cancel',
+        method: 'POST',
+        data: {},
+      });
+    },
+    function localCancel() {
+      return localCancelRegistration(eventId);
+    },
+    'cancelRegistration'
+  );
+}
+
 async function getUserByOpenid(openid) {
   const safe = encodeURIComponent(openid || '');
   return withFallback(
@@ -851,6 +1019,7 @@ module.exports = {
   getEventDetail,
   getMyRegistration,
   createRegistration,
+  cancelRegistration,
   getUserByOpenid,
   getEventAlbumSummary,
   getEventAlbum,

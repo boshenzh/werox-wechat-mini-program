@@ -1,5 +1,5 @@
 const app = getApp();
-const { getEventDetail, getEventAlbumSummary, getMyRegistration, listEvents } = require('../../utils/api');
+const { getEventDetail, getEventAlbumSummary, getMyRegistration, cancelRegistration, listEvents } = require('../../utils/api');
 const { normalizeDetailBlocks } = require('../../utils/event');
 const { track } = require('../../utils/analytics');
 
@@ -16,6 +16,13 @@ Page({
     loading: true,
     isFull: false,
     isSigned: false,
+    isWaitlisted: false,
+    registrationStatus: null,
+    waitlistPosition: null,
+    waitlistEnabled: false,
+    confirmedCount: 0,
+    waitlistedCount: 0,
+    cancelling: false,
     albumSummary: {
       totalPhotos: 0,
       canView: false,
@@ -194,12 +201,17 @@ Page({
   },
 
   async mapParticipants(participants = [], maxParticipants) {
-    const baseList = (participants || []).map((item) => ({
+    const activeParticipants = (participants || []).filter((item) => {
+      const status = item.registration_status || 'confirmed';
+      return status !== 'cancelled';
+    });
+    const baseList = activeParticipants.map((item) => ({
       id: item.id,
       nickname: item.user_nickname || '未命名选手',
       avatarFileId: item.user_avatar_file_id || '',
       division: item.division || '',
       sex: item.user_sex || '',
+      registrationStatus: item.registration_status || 'confirmed',
       userOpenid: item.user_openid || item._openid || '',
     }));
 
@@ -209,11 +221,16 @@ Page({
       avatarFileId: avatarMap[item.avatarFileId] || item.avatarFileId,
     }));
 
-    const isFull = maxParticipants ? list.length >= Number(maxParticipants) : false;
+    const confirmed = list.filter((item) => item.registrationStatus === 'confirmed' || !item.registrationStatus);
+    const waitlisted = list.filter((item) => item.registrationStatus === 'waitlisted');
+    const isFull = maxParticipants ? confirmed.length >= Number(maxParticipants) : false;
     return {
-      list,
-      preview: list.slice(0, MAX_PREVIEW_PARTICIPANTS),
+      list: confirmed,
+      waitlisted,
+      preview: confirmed.slice(0, MAX_PREVIEW_PARTICIPANTS),
       isFull,
+      confirmedCount: confirmed.length,
+      waitlistedCount: waitlisted.length,
     };
   },
 
@@ -291,6 +308,7 @@ Page({
         useStandardHyrox: eventData.use_standard_hyrox || false,
         availableDivisions: eventData.available_divisions || [],
         eventType: eventData.event_type || 'simulation',
+        waitlistEnabled: !!eventData.waitlist_enabled,
         eventTypeText: this.getEventTypeText(eventData.event_type),
         baseStrength: eventData.base_strength || 0,
         baseEndurance: eventData.base_endurance || 0,
@@ -317,6 +335,9 @@ Page({
         participants: participantInfo.list,
         participantPreview: participantInfo.preview,
         isFull: participantInfo.isFull,
+        confirmedCount: participantInfo.confirmedCount || 0,
+        waitlistedCount: participantInfo.waitlistedCount || 0,
+        waitlistEnabled: event.waitlistEnabled || false,
         isSigned: false,
         detailBlocks,
       });
@@ -359,11 +380,17 @@ Page({
     if (!Number.isFinite(safeEventId)) return;
     try {
       const result = await getMyRegistration(safeEventId);
-      this.setData({ isSigned: !!(result && result.is_signed) });
+      const regStatus = result && result.registration_status ? result.registration_status : null;
+      this.setData({
+        isSigned: !!(result && result.is_signed),
+        isWaitlisted: !!(result && result.is_waitlisted),
+        registrationStatus: regStatus,
+        waitlistPosition: result && result.waitlist_position ? result.waitlist_position : null,
+      });
     } catch (err) {
       // Treat errors as unsigned to avoid blocking normal signup flow.
       console.warn('Load my registration failed', err);
-      this.setData({ isSigned: false });
+      this.setData({ isSigned: false, isWaitlisted: false, registrationStatus: null, waitlistPosition: null });
     }
   },
 
@@ -471,7 +498,7 @@ Page({
 
   handleRegister() {
     if (!this.data.event || !this.data.event.id) return;
-    if (this.data.isFull) {
+    if (this.data.isFull && !this.data.waitlistEnabled) {
       track('signup_blocked_full', { event_id: String(this.data.event.id) });
       wx.showToast({ title: '报名已满', icon: 'none' });
       return;
@@ -482,6 +509,45 @@ Page({
       is_signed: this.data.isSigned ? 1 : 0,
     });
     wx.navigateTo({ url: `/pages/event-signup/event-signup?id=${this.data.event.id}` });
+  },
+
+  async handleCancelRegistration() {
+    if (!this.data.event || !this.data.event.id) return;
+    if (this.data.cancelling) return;
+
+    const statusText = this.data.isWaitlisted ? '退出候补' : '取消报名';
+    const confirmed = await new Promise(function confirmPromise(resolve) {
+      wx.showModal({
+        title: statusText,
+        content: this.data.isWaitlisted ? '确定退出候补队列吗？' : '确定取消报名吗？取消后名额将释放给候补用户。',
+        confirmText: '确定',
+        cancelText: '再想想',
+        success: function onSuccess(res) { resolve(res.confirm); },
+        fail: function onFail() { resolve(false); },
+      });
+    }.bind(this));
+
+    if (!confirmed) return;
+
+    this.setData({ cancelling: true });
+    try {
+      await cancelRegistration(this.data.event.id);
+      wx.showToast({ title: statusText + '成功', icon: 'success' });
+      track('registration_cancel', {
+        event_id: String(this.data.event.id),
+        previous_status: this.data.registrationStatus || '',
+      });
+      // Reload registration status and event data
+      await Promise.all([
+        this.loadMyRegistration(this.data.event.id),
+        this.loadEvent(Number(this.data.event.id)),
+      ]);
+    } catch (err) {
+      console.error('Cancel registration failed', err);
+      wx.showToast({ title: err.message || '取消失败', icon: 'none' });
+    } finally {
+      this.setData({ cancelling: false });
+    }
   },
 
   openAlbum() {

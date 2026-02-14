@@ -133,6 +133,7 @@ Page({
       base_strength: 5,
       base_endurance: 5,
       max_participants: '',
+      waitlist_enabled: false,
       price_fee: '',
     },
     detailBlocks: [],
@@ -374,6 +375,7 @@ Page({
         base_strength: safeNumber(event.base_strength, 5),
         base_endurance: safeNumber(event.base_endurance, 5),
         max_participants: event.max_participants || '',
+        waitlist_enabled: !!event.waitlist_enabled,
         price_fee: safeNumber(
           event.price_fee !== null && event.price_fee !== undefined ? event.price_fee : event.price_open,
           0
@@ -445,9 +447,14 @@ Page({
         base_strength: 5,
         base_endurance: 5,
         max_participants: '',
+        waitlist_enabled: false,
         price_fee: '',
       },
     });
+  },
+
+  handleWaitlistToggle(e) {
+    this.setData({ 'form.waitlist_enabled': !!e.detail.value });
   },
 
   generateSlug(title, date) {
@@ -586,6 +593,7 @@ Page({
       base_strength: Number(form.base_strength || 5),
       base_endurance: Number(form.base_endurance || 5),
       max_participants: form.max_participants === '' ? null : Number(form.max_participants || 0),
+      waitlist_enabled: form.waitlist_enabled ? 1 : 0,
       price_fee: fee,
       // Keep legacy fee fields for compatibility
       price_open: fee,

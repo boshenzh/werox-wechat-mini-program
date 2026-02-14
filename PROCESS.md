@@ -1160,3 +1160,95 @@ await db.from('table_name').delete().eq('id', id);
 - `SHOW COLUMNS FROM users WHERE Field = 'role'` → 确认 ENUM 含 `'coach'`
 - `readSecurityRule(event_participants)` → 确认含 `all: r`
 - 角色修改重试应不再报 `角色更新失败`
+
+---
+
+## 支付功能设计文档（2026-02-08）
+
+### 目标
+
+- 集成微信支付，让用户在报名赛事时根据组别价格完成支付。
+- 需要商户号（营业执照实体注册），使用 CloudRun 内置微信支付封装（服务商模式，免证书/签名）。
+
+### 产出
+
+- 完整实现规格文档：`PAYMENT.md`（自包含，零上下文 agent 可独立执行）
+- 涵盖：项目上下文、现有代码状态、文件路径地图、BFF 编码模式、数据库迁移、后端路由、前端改造、安全规则、手动配置清单、测试计划
+
+### 关键架构决策
+
+1. **推荐 CloudRun 内置微信支付封装**（非直接 V3 API），免证书免签名
+2. **支付不允许本地 fallback**，付费报名必须走 BFF
+3. **免费赛事保持现有流程不变**（`payment_status = 'free'`）
+4. **新增 `payment_orders` 表**追踪支付订单状态
+5. **回调处理必须幂等**，返回 `{ errcode: 0 }`
+
+### 阻塞项
+
+- 必须先完成商户号注册（需营业执照 + 银行账户）
+- 必须在云托管控制台配置微信支付（sub_mch_id + 回调路径）
+- 必须添加 BFF 环境变量（WX_PAY_MCH_ID、WX_PAY_API_V3_KEY）
+
+### 参见
+
+- 完整实现细节：`PAYMENT.md`
+
+---
+
+## 2026-02-08: Waitlist Feature Implementation
+
+### 功能概要
+
+为赛事报名添加候补名单功能：
+
+1. **组织者开关** — 每个赛事可独立启用/关闭候补名单 (`waitlist_enabled`)
+2. **候补队列** — 满员时新报名自动进入候补，FIFO 排序
+3. **自助取消** — 已确认和候补用户均可取消报名
+4. **自动晋级** — 已确认用户取消时，第一位候补自动晋级为已确认
+5. **微信订阅通知** — 候补用户晋级时收到一次性消息通知
+6. **无候补人数上限**
+
+### 数据库变更
+
+- 新增 SQL 迁移脚本: `scripts/sql/20260208_waitlist.sql`
+- `event_participants` 新增列: `registration_status`, `waitlist_position`, `cancelled_at`, `promoted_at`
+- `events` 新增列: `waitlist_enabled`
+- 新增索引: `idx_reg_status_event (event_id, registration_status, created_at)`
+- 所有现有行默认 `registration_status='confirmed'`，所有赛事默认 `waitlist_enabled=0`
+
+**注意**: 迁移脚本尚未执行，需手动通过 MCP `executeWriteSQL` 或云控制台分步执行。
+
+### 文件变更清单
+
+| 文件 | 变更类型 |
+|------|----------|
+| `scripts/sql/20260208_waitlist.sql` | **新增** — 数据库迁移 |
+| `cloudrun/werox-bff/lib/wechat-msg.js` | **新增** — 微信订阅消息发送 |
+| `cloudrun/werox-bff/routes/registration.js` | 修改 — 候补逻辑、取消路由、重新激活 |
+| `cloudrun/werox-bff/routes/events.js` | 修改 — 列名扩展、计数过滤 |
+| `cloudrun/werox-bff/index.js` | 修改 — 取消路由限流 |
+| `utils/api.js` | 修改 — 本地 fallback 候补支持、cancelRegistration |
+| `pages/admin-events/admin-events.js` | 修改 — waitlist_enabled 表单字段 |
+| `pages/admin-events/admin-events.wxml` | 修改 — 候补名单开关 UI |
+| `pages/event-detail/event-detail.js` | 修改 — 5 种 CTA 状态、取消功能 |
+| `pages/event-detail/event-detail.wxml` | 修改 — 底部操作栏 5 种状态 |
+| `pages/event-detail/event-detail.wxss` | 修改 — 候补/取消按钮样式 |
+| `pages/event-signup/event-signup.js` | 修改 — 候补感知提交、订阅消息 |
+| `pages/event-signup/event-signup.wxml` | 修改 — 候补提示卡、按钮文案 |
+| `pages/event-signup/event-signup.wxss` | 修改 — 候补通知卡和按钮样式 |
+
+### 部署前置条件
+
+1. **执行数据库迁移** — 运行 `scripts/sql/20260208_waitlist.sql`
+2. **配置 BFF 环境变量** (可选，用于通知):
+   - `WX_APPID` — 小程序 AppID
+   - `WX_APP_SECRET` — 小程序 AppSecret
+   - `WX_SUBSCRIBE_TPL_WAITLIST_PROMOTED` — 订阅消息模板 ID
+3. **重新部署 BFF** — `cloudrun/werox-bff/`
+4. **配置小程序订阅消息模板** (可选) — 在微信公众平台添加候补晋级通知模板
+
+### 向后兼容
+
+- 所有现有数据自动兼容 (默认值 `confirmed` / `0`)
+- 前端 fallback 处理 `Unknown column` 错误（迁移前也能正常运行）
+- 本地 fallback 模式下取消不执行自动晋级（需 BFF 保证原子性）

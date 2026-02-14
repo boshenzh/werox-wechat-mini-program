@@ -10,6 +10,12 @@
     </view>
   </view>
 
+  <!-- Waitlist Notice -->
+  <view class="card info-card waitlist-notice-card" wx:if="{{willBeWaitlisted && !isSigned}}">
+    <text class="section-title">候补提示</text>
+    <text class="subtext">当前报名已满，提交后你将进入候补队列。当有名额释放时，你将按顺序自动晋级并收到通知。</text>
+  </view>
+
   <!-- Profile Preview Card -->
   <view class="card info-card profile-info-card" wx:if="{{profile}}">
     <text class="section-title">你的资料</text>
@@ -31,7 +37,8 @@
   <view class="card form-card" wx:if="{{event && !loading}}">
     <view class="form-head">
       <text class="section-title">报名信息</text>
-      <text class="subtext">完成以下内容后即可锁定名额</text>
+      <text class="subtext" wx:if="{{!willBeWaitlisted}}">完成以下内容后即可锁定名额</text>
+      <text class="subtext" wx:else>完成以下内容后加入候补队列</text>
     </view>
 
     <view class="form-row">
@@ -58,9 +65,10 @@
     </view>
 
     <view class="action-row">
-      <button class="primary-btn submit-btn" loading="{{submitting}}" bindtap="handleSubmit" wx:if="{{!isSigned}}">
-        确认报名
+      <button class="primary-btn submit-btn {{willBeWaitlisted ? 'waitlist-submit-btn' : ''}}" loading="{{submitting}}" bindtap="handleSubmit" wx:if="{{!isSigned}}">
+        {{willBeWaitlisted ? '加入候补' : '确认报名'}}
       </button>
+      <button class="ghost-btn signed-btn" wx:elif="{{registrationStatus === 'waitlisted'}}" disabled>已加入候补</button>
       <button class="ghost-btn signed-btn" wx:else disabled>已报名</button>
     </view>
   </view>

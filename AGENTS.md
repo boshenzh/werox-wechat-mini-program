@@ -456,3 +456,53 @@ DESIGN SPECIFICATION - WeRox Mini Program
 
 - CSV 导出在部分平台（例如 Windows 开发者工具）`wx.openDocument` 可能不支持 `.csv/.txt`：`utils/export.js` 改为对 CSV/TXT 打开失败时直接回退“复制到剪贴板”，避免导出流程中断。
 - BFF 缺少 `TCB_API_KEY` 时，部分接口会以不同业务错误码包裹但 `detail` 仍包含 `missing_tcb_api_key`：`utils/api.js` 的后端不可用判定补齐对该 `detail` 信号的识别，确保核心页能按预期走本地只读 fallback。
+
+
+---
+
+## 候补名单功能规范（2026-02-08）
+
+### 数据库变更
+
+- `event_participants` 新增列:
+  - `registration_status VARCHAR(32) DEFAULT 'confirmed'` — 状态: confirmed / waitlisted / cancelled
+  - `waitlist_position INT NULL` — 候补排位（仅 waitlisted 有值）
+  - `cancelled_at TIMESTAMP NULL` — 取消时间
+  - `promoted_at TIMESTAMP NULL` — 晋级时间
+- `events` 新增列:
+  - `waitlist_enabled TINYINT(1) DEFAULT 0` — 候补开关
+- 迁移脚本: `scripts/sql/20260208_waitlist.sql`
+
+### BFF 新增路由
+
+- `POST /v1/events/:id/registrations/me/cancel` — 取消报名/退出候补
+  - 身份必需（attachIdentity）
+  - 已确认用户取消 + 候补开启 → 自动晋级第一位候补
+  - 晋级通知通过微信订阅消息（非阻塞）
+
+### BFF 新增模块
+
+- `cloudrun/werox-bff/lib/wechat-msg.js` — 微信订阅消息发送
+  - 环境变量: `WX_APPID`, `WX_APP_SECRET`, `WX_SUBSCRIBE_TPL_WAITLIST_PROMOTED`
+  - access_token 内存缓存 2 小时
+  - 发送失败不抛异常（fire-and-forget）
+
+### 前端 CTA 状态（赛事详情页底部操作栏）
+
+1. 已确认: `[取消报名] [已报名 (disabled)]`
+2. 候补中: `[退出候补] [候补中 #N (disabled)]`
+3. 满员 + 候补开启: `[加入候补]`
+4. 满员 + 无候补: `[报名已满 (disabled)]`
+5. 未满: `[立即报名]`
+
+### 容量计算规则
+
+- 人数上限比较仅计算 `registration_status = 'confirmed'` 的记录
+- 候补用户不占用正式名额
+- 取消的记录保留行但标记 `registration_status = 'cancelled'`
+- 重新报名时 UPDATE 已取消行（不创建新行）
+
+### 竞态安全
+
+- 自动晋级 UPDATE 使用 `WHERE registration_status = 'waitlisted'` 条件
+- 并发取消只有一个能成功晋级同一候补用户（0 affected rows = 跳过）

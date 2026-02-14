@@ -81,6 +81,7 @@ app.use(eventRoutes);
 
 // Registration (rate-limited write)
 app.post('/v1/events/:id/registrations', registrationLimiter);
+app.post('/v1/events/:id/registrations/me/cancel', registrationLimiter);
 app.use(registrationRoutes);
 
 // Album (rate-limited upload)
